@@ -14,7 +14,7 @@ import base64
 st.set_page_config(page_title="AI Thai Nutritionist Pro", page_icon="🥗", layout="wide")
 
 # ⚠️ ใส่ API Key จาก Google AI Studio ของคุณที่นี่
-client = genai.Client(api_key="GEMINI_API_KEY")
+client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
 MODEL_NAME = 'gemini-2.5-flash'
 
