@@ -188,23 +188,23 @@ def render_bmi_bar(bmi_value):
     """, unsafe_allow_html=True)
 
 def render_fbs_bar(fbs_value):
-    if not fbs_value or fbs_value <= 0:
+    if fbs_value is None or fbs_value <= 0:
         st.markdown("<div style='font-size: 0.95rem; font-weight: 600; color: #2D3748;'>🩸 FBS (ระดับน้ำตาลในเลือดหลังอดอาหาร): <span style='color:#718096; font-weight: 400;'>(ไม่ได้ระบุข้อมูลเข้ามา)</span></div>", unsafe_allow_html=True)
+        display_fbs = 72
     else:
         status_text = "ปกติ" if fbs_value <= 100 else ("เริ่มสูง" if fbs_value <= 125 else "สูงมาก")
         st.markdown(f"<div style='font-size: 0.95rem; font-weight: 600; color: #2D3748;'>🩸 FBS (ระดับน้ำตาลในเลือดหลังอดอาหาร): <span style='color:#E53E3E;'>{fbs_value} mg/dL</span> ({status_text})</div>", unsafe_allow_html=True)
-    
+        display_fbs = max(72, min(fbs_value, 168))
+
     fig = go.Figure()
     fig.add_trace(go.Bar(y=['FBS'], x=[30], base=70, orientation='h', marker=dict(color='#4CD964'), hoverinfo='none', showlegend=False))
     fig.add_trace(go.Bar(y=['FBS'], x=[25], base=100, orientation='h', marker=dict(color='#FF9500'), hoverinfo='none', showlegend=False))
     fig.add_trace(go.Bar(y=['FBS'], x=[45], base=125, orientation='h', marker=dict(color='#FF3B30'), hoverinfo='none', showlegend=False))
 
-    display_fbs = max(72, min(fbs_value if fbs_value > 0 else 72, 168))
-
     fig.add_trace(go.Scatter(
         x=[display_fbs], y=['FBS'], mode='markers',
         marker=dict(color='#E53E3E', size=14, line=dict(color='white', width=2)),
-        hoverinfo='text', hovertext=f"FBS: {fbs_value} mg/dL" if fbs_value > 0 else "ไม่ได้ระบุข้อมูล",
+        hoverinfo='text', hovertext=f"FBS: {fbs_value} mg/dL" if (fbs_value and fbs_value > 0) else "ไม่ได้ระบุข้อมูล",
         showlegend=False
     ))
 
@@ -373,23 +373,22 @@ def login_page():
         st.markdown("""
         <div style="text-align: center; padding: 40px 20px 20px 20px;">
             <div style="font-size: 50px;">🥗</div>
-            <h2 style="color: #4E6E58; font-weight: 600;">AI Thai Nutritionist</h2>
-            <p style="color: #718096; font-size: 0.9rem;">โภชนาการอาหารไทยส่วนบุคคล เข้าถึงง่าย</p>
+            <h2 style="color: #4E6E58; font-weight: 600; margin-bottom: 5px;">AI Thai Nutritionist</h2>
+            <p style="color: #718096; font-size: 0.9rem; margin-bottom: 25px;">โภชนาการอาหารไทยส่วนบุคคล เข้าถึงง่าย</p>
         </div>
         """, unsafe_allow_html=True)
         
-        with st.container():
-            st.markdown('<div class="card-container">', unsafe_allow_html=True)
+        # แก้ไข: ย้าย Input และ Button ให้อยู่ข้างใน Form ตรงๆ โดยไม่มี st.write(" ") เพื่อขจัดกล่องเปล่า
+        with st.form("login_form"):
             email = st.text_input("อีเมลของคุณ (Gmail)", placeholder="yourname@gmail.com")
-            st.write(" ")
-            if st.button("เข้าสู่ระบบ / สมัครสมาชิก ➔", type="primary", use_container_width=True):
+            submit_login = st.form_submit_button("เข้าสู่ระบบ / สมัครสมาชิก ➔", type="primary", use_container_width=True)
+            if submit_login:
                 if "@" in email:
                     st.session_state.user_email = email.strip()
                     st.session_state.active_tab = "my_meal"
                     st.rerun()
                 else:
                     st.error("⚠️ กรุณากรอกอีเมลให้ถูกต้อง")
-            st.markdown('</div>', unsafe_allow_html=True)
 
 def profile_form(existing_data=None):
     is_edit = existing_data is not None
@@ -427,12 +426,17 @@ def profile_form(existing_data=None):
         allergies = st.text_input("อาหารที่แพ้ (เว้นว่างได้)", value=existing_data['allergies'] if is_edit else "")
         
         st.markdown("#### 🩺 ผลตรวจสุขภาพ (Optional)")
-        bs_val = float(existing_data['blood_sugar']) if (is_edit and 'blood_sugar' in existing_data.keys() and existing_data['blood_sugar']) else 0.0
+        
+        # ดึงค่า FBS เดิมถ้ามี ถ้าไม่มีให้เป็น None
+        raw_bs = existing_data['blood_sugar'] if (is_edit and 'blood_sugar' in existing_data.keys()) else None
+        bs_val = float(raw_bs) if (raw_bs is not None and raw_bs > 0) else None
+        
         bp_val = existing_data['blood_pressure'] if (is_edit and 'blood_pressure' in existing_data.keys() and existing_data['blood_pressure']) else ""
         
         col_bs, col_bp = st.columns(2)
         with col_bs:
-            blood_sugar = st.number_input("ระดับน้ำตาล FBS (mg/dL)", min_value=0.0, max_value=500.0, value=bs_val, step=1.0)
+            # ใช้ value=bs_val แบบยืดหยุ่น ถ้าล้างเลขจะคืนค่า None ทันทีไม่เด้งกลับเป็น 100
+            blood_sugar = st.number_input("ระดับน้ำตาล FBS (mg/dL) - ลบออกเพื่อไม่ระบุได้", value=bs_val, placeholder="ไม่ระบุ")
         with col_bp:
             blood_pressure = st.text_input("ความดันโลหิต (mmHg)", value=bp_val, placeholder="เช่น 120/80")
 
@@ -454,11 +458,13 @@ def profile_form(existing_data=None):
             else:
                 bmi_calc, _ = calculate_bmi(weight, height)
                 goals_str = ", ".join(goals)
+                bs_to_save = float(blood_sugar) if blood_sugar is not None else None
+                
                 conn = get_db_connection()
                 conn.execute('''INSERT OR REPLACE INTO users 
                              (email, nickname, gender, birth_year, weight, height, bmi, goals, diseases, allergies, blood_sugar, blood_pressure) 
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                             (st.session_state.user_email, nickname.strip(), gender, birth_year - 543, weight, height, bmi_calc, goals_str, diseases, allergies, blood_sugar, blood_pressure))
+                             (st.session_state.user_email, nickname.strip(), gender, birth_year - 543, weight, height, bmi_calc, goals_str, diseases, allergies, bs_to_save, blood_pressure))
                 conn.commit()
                 conn.close()
                 st.success("🎉 บันทึกข้อมูลสำเร็จ!")
@@ -525,7 +531,10 @@ else:
                 user_w = user['weight'] if user['weight'] is not None else 60.0
                 user_h = user['height'] if user['height'] is not None else 165.0
                 bmi_val, bmi_status = calculate_bmi(user_w, user_h)
-                bs_val = float(user['blood_sugar']) if ('blood_sugar' in user.keys() and user['blood_sugar']) else 0.0
+                
+                raw_bs = user['blood_sugar'] if ('blood_sugar' in user.keys()) else None
+                bs_val = float(raw_bs) if (raw_bs is not None and float(raw_bs) > 0) else None
+                
                 bp_val = user['blood_pressure'] if ('blood_pressure' in user.keys() and user['blood_pressure'] and str(user['blood_pressure']).strip() != "") else None
                 
                 st.markdown('<div class="card-container">', unsafe_allow_html=True)
@@ -593,7 +602,7 @@ else:
                     
                     col_f_bs, col_f_bp = st.columns(2)
                     with col_f_bs:
-                        f_bs = st.number_input("ระดับน้ำตาล FBS (mg/dL)", min_value=0.0, max_value=500.0, value=0.0)
+                        f_bs = st.number_input("ระดับน้ำตาล FBS (mg/dL) - ลบออกเพื่อไม่ระบุได้", value=None, placeholder="ไม่ระบุ")
                     with col_f_bp:
                         f_bp = st.text_input("ความดันโลหิต (mmHg)", placeholder="เช่น 120/80")
 
@@ -607,7 +616,7 @@ else:
                             "nickname": f_name.strip(), "gender": f_gender, "birth_year": f_year - 543,
                             "weight": f_w, "height": f_h, "goals": ", ".join(f_goals),
                             "diseases": f_dis, "allergies": f_alg,
-                            "blood_sugar": f_bs, "blood_pressure": f_bp
+                            "blood_sugar": f_bs if f_bs is not None else None, "blood_pressure": f_bp
                         }
                         with st.spinner(f"กำลังสรุปคำแนะนำสุขภาพให้ คุณ {f_name}..."):
                             res = ask_ai_nutritionist(temp_profile)
@@ -654,9 +663,11 @@ else:
                         ed = st.text_input("โรคประจำตัว", value=f_data['diseases'])
                         ea = st.text_input("อาหารที่แพ้", value=f_data['allergies'])
                         
-                        ebs_val = float(f_data['blood_sugar']) if ('blood_sugar' in f_data.keys() and f_data['blood_sugar']) else 0.0
+                        raw_ebs = f_data['blood_sugar'] if ('blood_sugar' in f_data.keys()) else None
+                        ebs_val = float(raw_ebs) if (raw_ebs is not None and float(raw_ebs) > 0) else None
+                        
                         ebp_val = f_data['blood_pressure'] if ('blood_pressure' in f_data.keys() and f_data['blood_pressure']) else ""
-                        ebs = st.number_input("ระดับน้ำตาล (mg/dL)", min_value=0.0, max_value=500.0, value=ebs_val)
+                        ebs = st.number_input("ระดับน้ำตาล FBS (mg/dL) - ลบออกเพื่อไม่ระบุได้", value=ebs_val, placeholder="ไม่ระบุ")
                         ebp = st.text_input("ความดันโลหิต (mmHg)", value=ebp_val)
                         eimg = st.file_uploader("รูปภาพใหม่", type=['jpg', 'jpeg', 'png'])
                         
@@ -676,13 +687,15 @@ else:
                             else:
                                 ebmi, _ = calculate_bmi(ew, eh)
                                 egoals_str = ", ".join(egoals)
+                                ebs_to_save = float(ebs) if ebs is not None else None
+                                
                                 if eimg:
                                     img_byte = eimg.read()
                                     conn.execute('''UPDATE favorites SET nickname=?, gender=?, birth_year=?, weight=?, height=?, bmi=?, goals=?, diseases=?, allergies=?, blood_sugar=?, blood_pressure=?, photo=? WHERE id=?''',
-                                                 (en.strip(), eg, ey-543, ew, eh, ebmi, egoals_str, ed, ea, ebs, ebp, img_byte, fav_id))
+                                                 (en.strip(), eg, ey-543, ew, eh, ebmi, egoals_str, ed, ea, ebs_to_save, ebp, img_byte, fav_id))
                                 else:
                                     conn.execute('''UPDATE favorites SET nickname=?, gender=?, birth_year=?, weight=?, height=?, bmi=?, goals=?, diseases=?, allergies=?, blood_sugar=?, blood_pressure=? WHERE id=?''',
-                                                 (en.strip(), eg, ey-543, ew, eh, ebmi, egoals_str, ed, ea, ebs, ebp, fav_id))
+                                                 (en.strip(), eg, ey-543, ew, eh, ebmi, egoals_str, ed, ea, ebs_to_save, ebp, fav_id))
                                 conn.commit()
                                 conn.close()
                                 del st.session_state.edit_fav_id
@@ -747,7 +760,7 @@ else:
                                 d = st.text_input("โรคประจำตัว", placeholder="ถ้าไม่มีเว้นว่าง")
                                 a = st.text_input("อาหารที่แพ้", placeholder="ถ้าไม่มีเว้นว่าง")
                                 
-                                bs_new = st.number_input("ระดับน้ำตาล FBS (mg/dL)", min_value=0.0, max_value=500.0, value=0.0, key="fav_bs")
+                                bs_new = st.number_input("ระดับน้ำตาล FBS (mg/dL) - ลบออกเพื่อไม่ระบุได้", value=None, placeholder="ไม่ระบุ", key="fav_bs")
                                 bp_new = st.text_input("ความดันโลหิต (mmHg)", placeholder="เช่น 120/80", key="fav_bp")
                                 img_file = st.file_uploader("รูปภาพ", type=['jpg', 'jpeg', 'png'])
                                 
@@ -758,10 +771,11 @@ else:
                                         img_byte = img_file.read() if img_file else None
                                         fbmi_calc, _ = calculate_bmi(w, h)
                                         goals_str = ", ".join(f_goals_new)
+                                        bs_new_save = float(bs_new) if bs_new is not None else None
                                         conn.execute('''INSERT INTO favorites 
                                                      (owner_email, nickname, gender, birth_year, weight, height, bmi, goals, diseases, allergies, blood_sugar, blood_pressure, photo) 
                                                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-                                                     (st.session_state.user_email, n.strip(), g, y - 543, w, h, fbmi_calc, goals_str, d, a, bs_new, bp_new, img_byte))
+                                                     (st.session_state.user_email, n.strip(), g, y - 543, w, h, fbmi_calc, goals_str, d, a, bs_new_save, bp_new, img_byte))
                                         conn.commit()
                                         conn.close()
                                         st.rerun()
