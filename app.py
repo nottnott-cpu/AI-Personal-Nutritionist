@@ -16,7 +16,6 @@ st.set_page_config(page_title="AI Thai Nutritionist Pro", page_icon="🥗", layo
 # ⚠️ ใส่ API Key จาก Google AI Studio ของคุณที่นี่ (ผ่าน Streamlit Secrets)
 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
-
 MODEL_NAME = 'gemini-2.5-flash'
 
 # --- Custom CSS ---
@@ -69,15 +68,6 @@ st.markdown("""
         border: 1px solid #D1E0D5 !important;
         border-radius: 12px !important;
         font-weight: 500 !important;
-    }
-    
-    .card-container {
-        background-color: #FFFFFF;
-        border-radius: 18px;
-        padding: 20px;
-        border: 1px solid #EAEFEA;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.02);
-        margin-bottom: 15px;
     }
 
     .ai-summary-box {
@@ -404,19 +394,16 @@ def profile_form(existing_data=None):
         with col1:
             nickname = st.text_input("ชื่อเล่น*", value=existing_data['nickname'] if is_edit else "")
             
-            # 📌 บังคับระบุเพศ
             gender_options = ["-- กรุณาเลือกเพศ --", "ชาย", "หญิง"]
             default_g_idx = 0
             if is_edit and existing_data['gender'] in ["ชาย", "หญิง"]:
                 default_g_idx = gender_options.index(existing_data['gender'])
             gender = st.selectbox("เพศ*", gender_options, index=default_g_idx)
             
-            # 📌 บังคับระบุปีเกิด
             default_year = (existing_data['birth_year'] + 543) if (is_edit and existing_data['birth_year']) else None
             birth_year = st.number_input("ปีเกิด (พ.ศ.)*", min_value=2450, max_value=datetime.now().year + 543, value=default_year, placeholder="เช่น 2535")
 
         with col2:
-            # 📌 บังคับระบุน้ำหนัก/ส่วนสูง
             w_val = existing_data['weight'] if (is_edit and existing_data['weight']) else None
             h_val = existing_data['height'] if (is_edit and existing_data['height']) else None
             weight = st.number_input("น้ำหนัก (กก.)*", min_value=1.0, max_value=300.0, value=w_val, step=0.1, placeholder="เช่น 60.5")
@@ -436,7 +423,6 @@ def profile_form(existing_data=None):
         
         st.markdown("#### 🩺 ผลตรวจสุขภาพ (Optional)")
         
-        # 📌 ระดับน้ำตาล FBS ลบออกแล้วว่างจริง ไม่เด้งกลับ 100
         raw_bs = existing_data['blood_sugar'] if (is_edit and 'blood_sugar' in existing_data.keys()) else None
         bs_val = float(raw_bs) if (raw_bs is not None and float(raw_bs) > 0) else None
         
@@ -459,7 +445,6 @@ def profile_form(existing_data=None):
                     st.rerun()
 
         if submit:
-            # Validation ตรวจสอบข้อมูลจำเป็นทั้งหมด
             if not nickname.strip():
                 st.error("⚠️ กรุณากรอกชื่อเล่น")
             elif gender not in ["ชาย", "หญิง"]:
@@ -541,8 +526,6 @@ else:
                     del st.session_state.user_email
                     st.rerun()
 
-            st.write(" ")
-
             # ================= TAB 1: มื้ออาหารของฉัน =================
             if st.session_state.active_tab == "my_meal":
                 user_w = user['weight'] if user['weight'] is not None else 60.0
@@ -554,21 +537,19 @@ else:
                 
                 bp_val = user['blood_pressure'] if ('blood_pressure' in user.keys() and user['blood_pressure'] and str(user['blood_pressure']).strip() != "") else None
                 
-                st.markdown('<div class="card-container">', unsafe_allow_html=True)
-                st.markdown("##### 📊 ภาพรวมสุขภาพ (Health Metrics Visualized)")
-                
-                v_col1, v_col2, v_col3 = st.columns(3)
-                
-                with v_col1:
-                    render_bmi_bar(bmi_val)
+                with st.container(border=True):
+                    st.markdown("##### 📊 ภาพรวมสุขภาพ (Health Metrics Visualized)")
+                    
+                    v_col1, v_col2, v_col3 = st.columns(3)
+                    
+                    with v_col1:
+                        render_bmi_bar(bmi_val)
 
-                with v_col2:
-                    render_fbs_bar(bs_val)
+                    with v_col2:
+                        render_fbs_bar(bs_val)
 
-                with v_col3:
-                    render_bp_bar(bp_val)
-
-                st.markdown('</div>', unsafe_allow_html=True)
+                    with v_col3:
+                        render_bp_bar(bp_val)
 
                 col_det, col_btn = st.columns([3, 1])
                 with col_det:
@@ -578,7 +559,7 @@ else:
                         st.session_state.edit_my_profile = True
                         st.rerun()
 
-                st.write("---")
+                st.divider()
                 
                 if st.button("🎲 สุ่มคำแนะนำโภชนาการและแผนดูแลสุขภาพประจำวัน", type="primary", use_container_width=True):
                     with st.spinner("🤖 AI กำลังวิเคราะห์และจัดทำคำแนะนำโภชนาการฉบับสมบูรณ์..."):
@@ -751,39 +732,38 @@ else:
                                 f_h = f['height'] if f['height'] is not None else 165.0
                                 fbmi, fstatus = calculate_bmi(f_w, f_h)
 
-                                st.markdown('<div class="card-container">', unsafe_allow_html=True)
-                                if f['photo']:
-                                    st.image(f['photo'], use_column_width=True)
-                                else:
-                                    st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=80)
-                                
-                                st.markdown(f"**คุณ {f['nickname']}** (BMI: {fbmi})")
-                                st.caption(f"📌 {fstatus}")
-                                st.caption(f"🎯 {f['goals']} | ⚠️ {f['diseases'] if f['diseases'] else 'ไม่มี'}")
-                                
-                                if st.button("🎲 คำนวณโภชนาการ", key=f"ai_{f['id']}", type="primary", use_container_width=True):
-                                    with st.spinner("AI กำลังวิเคราะห์..."):
-                                        res = ask_ai_nutritionist(dict(f))
-                                        st.session_state[f"fav_ai_{f['id']}"] = res
-                                
-                                if f"fav_ai_{f['id']}" in st.session_state:
-                                    st.markdown(f"<div class='ai-summary-box'>{st.session_state[f'fav_ai_{f['id']}']}</div>", unsafe_allow_html=True)
-                                    if st.button("🔊 ฟังเสียงคำแนะนำ", key=f"tts_fav_{f['id']}", type="secondary", use_container_width=True):
-                                        play_audio_from_text(st.session_state[f"fav_ai_{f['id']}"])
+                                with st.container(border=True):
+                                    if f['photo']:
+                                        st.image(f['photo'], use_column_width=True)
+                                    else:
+                                        st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=80)
+                                    
+                                    st.markdown(f"**คุณ {f['nickname']}** (BMI: {fbmi})")
+                                    st.caption(f"📌 {fstatus}")
+                                    st.caption(f"🎯 {f['goals']} | ⚠️ {f['diseases'] if f['diseases'] else 'ไม่มี'}")
+                                    
+                                    if st.button("🎲 คำนวณโภชนาการ", key=f"ai_{f['id']}", type="primary", use_container_width=True):
+                                        with st.spinner("AI กำลังวิเคราะห์..."):
+                                            res = ask_ai_nutritionist(dict(f))
+                                            st.session_state[f"fav_ai_{f['id']}"] = res
+                                    
+                                    if f"fav_ai_{f['id']}" in st.session_state:
+                                        st.markdown(f"<div class='ai-summary-box'>{st.session_state[f'fav_ai_{f['id']}']}</div>", unsafe_allow_html=True)
+                                        if st.button("🔊 ฟังเสียงคำแนะนำ", key=f"tts_fav_{f['id']}", type="secondary", use_container_width=True):
+                                            play_audio_from_text(st.session_state[f"fav_ai_{f['id']}"])
 
-                                c_btn1, c_btn2 = st.columns(2)
-                                with c_btn1:
-                                    if st.button("✏️ แก้ไข", key=f"editbtn_{f['id']}", use_container_width=True):
-                                        st.session_state.edit_fav_id = f['id']
-                                        conn.close()
-                                        st.rerun()
-                                with c_btn2:
-                                    if st.button("🗑️ ลบ", key=f"del_{f['id']}", type="secondary", use_container_width=True):
-                                        conn.execute("DELETE FROM favorites WHERE id = ?", (f['id'],))
-                                        conn.commit()
-                                        conn.close()
-                                        st.rerun()
-                                st.markdown('</div>', unsafe_allow_html=True)
+                                    c_btn1, c_btn2 = st.columns(2)
+                                    with c_btn1:
+                                        if st.button("✏️ แก้ไข", key=f"editbtn_{f['id']}", use_container_width=True):
+                                            st.session_state.edit_fav_id = f['id']
+                                            conn.close()
+                                            st.rerun()
+                                    with c_btn2:
+                                        if st.button("🗑️ ลบ", key=f"del_{f['id']}", type="secondary", use_container_width=True):
+                                            conn.execute("DELETE FROM favorites WHERE id = ?", (f['id'],))
+                                            conn.commit()
+                                            conn.close()
+                                            st.rerun()
                     else:
                         st.info("ยังไม่มีข้อมูลคนโปรด กดเพิ่มด้านล่างได้เลยครับ")
 
