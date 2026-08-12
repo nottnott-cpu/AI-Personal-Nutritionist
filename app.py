@@ -16,6 +16,7 @@ st.set_page_config(page_title="AI Thai Nutritionist Pro", page_icon="🥗", layo
 # ⚠️ ใส่ API Key จาก Google AI Studio ของคุณที่นี่ (ผ่าน Streamlit Secrets)
 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
+
 MODEL_NAME = 'gemini-2.5-flash'
 
 # --- Custom CSS ---
@@ -137,7 +138,7 @@ init_db()
 
 # --- Helper Functions: คำนวณ BMI & Plot Horizontal Status Bars ---
 def calculate_bmi(weight, height):
-    if height > 0 and weight > 0:
+    if height and weight and height > 0 and weight > 0:
         height_m = height / 100
         bmi = weight / (height_m ** 2)
         if bmi < 18.5:
@@ -378,7 +379,6 @@ def login_page():
         </div>
         """, unsafe_allow_html=True)
         
-        # แก้ไข: ย้าย Input และ Button ให้อยู่ข้างใน Form ตรงๆ โดยไม่มี st.write(" ") เพื่อขจัดกล่องเปล่า
         with st.form("login_form"):
             email = st.text_input("อีเมลของคุณ (Gmail)", placeholder="yourname@gmail.com")
             submit_login = st.form_submit_button("เข้าสู่ระบบ / สมัครสมาชิก ➔", type="primary", use_container_width=True)
@@ -403,15 +403,24 @@ def profile_form(existing_data=None):
         col1, col2 = st.columns(2)
         with col1:
             nickname = st.text_input("ชื่อเล่น*", value=existing_data['nickname'] if is_edit else "")
-            gender = st.selectbox("เพศ", ["ชาย", "หญิง"], index=["ชาย", "หญิง"].index(existing_data['gender']) if (is_edit and existing_data['gender'] in ["ชาย", "หญิง"]) else 0)
-            default_year = (existing_data['birth_year'] + 543) if is_edit else 2545
-            birth_year = st.number_input("ปีเกิด (พ.ศ.)", min_value=2450, max_value=datetime.now().year + 543, value=default_year)
+            
+            # 📌 บังคับระบุเพศ
+            gender_options = ["-- กรุณาเลือกเพศ --", "ชาย", "หญิง"]
+            default_g_idx = 0
+            if is_edit and existing_data['gender'] in ["ชาย", "หญิง"]:
+                default_g_idx = gender_options.index(existing_data['gender'])
+            gender = st.selectbox("เพศ*", gender_options, index=default_g_idx)
+            
+            # 📌 บังคับระบุปีเกิด
+            default_year = (existing_data['birth_year'] + 543) if (is_edit and existing_data['birth_year']) else None
+            birth_year = st.number_input("ปีเกิด (พ.ศ.)*", min_value=2450, max_value=datetime.now().year + 543, value=default_year, placeholder="เช่น 2535")
 
         with col2:
-            w_val = existing_data['weight'] if is_edit else 60.0
-            h_val = existing_data['height'] if is_edit else 165.0
-            weight = st.number_input("น้ำหนัก (กก.)", min_value=1.0, max_value=300.0, value=w_val, step=0.1)
-            height = st.number_input("ส่วนสูง (ซม.)", min_value=50.0, max_value=250.0, value=h_val, step=0.1)
+            # 📌 บังคับระบุน้ำหนัก/ส่วนสูง
+            w_val = existing_data['weight'] if (is_edit and existing_data['weight']) else None
+            h_val = existing_data['height'] if (is_edit and existing_data['height']) else None
+            weight = st.number_input("น้ำหนัก (กก.)*", min_value=1.0, max_value=300.0, value=w_val, step=0.1, placeholder="เช่น 60.5")
+            height = st.number_input("ส่วนสูง (ซม.)*", min_value=50.0, max_value=250.0, value=h_val, step=0.1, placeholder="เช่น 165.0")
 
         all_goals = ["ลดน้ำหนัก", "ลดไขมัน", "เพิ่มกล้ามเนื้อ", "สร้างความแข็งแรง", "ดูแลสุขภาพองค์รวม"]
         
@@ -420,23 +429,22 @@ def profile_form(existing_data=None):
             raw_goals = [g.strip() for g in existing_data['goals'].split(",")]
             default_goals = [g for g in raw_goals if g in all_goals]
             
-        goals = st.multiselect("เป้าหมายสุขภาพ", all_goals, default=default_goals)
+        goals = st.multiselect("เป้าหมายสุขภาพ*", all_goals, default=default_goals)
         
         diseases = st.text_input("โรคประจำตัว (เว้นว่างได้)", value=existing_data['diseases'] if is_edit else "")
         allergies = st.text_input("อาหารที่แพ้ (เว้นว่างได้)", value=existing_data['allergies'] if is_edit else "")
         
         st.markdown("#### 🩺 ผลตรวจสุขภาพ (Optional)")
         
-        # ดึงค่า FBS เดิมถ้ามี ถ้าไม่มีให้เป็น None
+        # 📌 ระดับน้ำตาล FBS ลบออกแล้วว่างจริง ไม่เด้งกลับ 100
         raw_bs = existing_data['blood_sugar'] if (is_edit and 'blood_sugar' in existing_data.keys()) else None
-        bs_val = float(raw_bs) if (raw_bs is not None and raw_bs > 0) else None
+        bs_val = float(raw_bs) if (raw_bs is not None and float(raw_bs) > 0) else None
         
         bp_val = existing_data['blood_pressure'] if (is_edit and 'blood_pressure' in existing_data.keys() and existing_data['blood_pressure']) else ""
         
         col_bs, col_bp = st.columns(2)
         with col_bs:
-            # ใช้ value=bs_val แบบยืดหยุ่น ถ้าล้างเลขจะคืนค่า None ทันทีไม่เด้งกลับเป็น 100
-            blood_sugar = st.number_input("ระดับน้ำตาล FBS (mg/dL) - ลบออกเพื่อไม่ระบุได้", value=bs_val, placeholder="ไม่ระบุ")
+            blood_sugar = st.number_input("ระดับน้ำตาล FBS (mg/dL) - เว้นว่างได้", value=bs_val, key="my_fbs_input", placeholder="ไม่ระบุ")
         with col_bp:
             blood_pressure = st.text_input("ความดันโลหิต (mmHg)", value=bp_val, placeholder="เช่น 120/80")
 
@@ -451,8 +459,17 @@ def profile_form(existing_data=None):
                     st.rerun()
 
         if submit:
+            # Validation ตรวจสอบข้อมูลจำเป็นทั้งหมด
             if not nickname.strip():
                 st.error("⚠️ กรุณากรอกชื่อเล่น")
+            elif gender not in ["ชาย", "หญิง"]:
+                st.error("⚠️ กรุณาเลือกเพศ")
+            elif birth_year is None:
+                st.error("⚠️ กรุณากรอกปีเกิด (พ.ศ.)")
+            elif weight is None or weight <= 0:
+                st.error("⚠️ กรุณากรอกน้ำหนัก (กก.)")
+            elif height is None or height <= 0:
+                st.error("⚠️ กรุณากรอกส่วนสูง (ซม.)")
             elif not goals:
                 st.error("⚠️ กรุณาเลือกเป้าหมายอย่างน้อย 1 ข้อ")
             else:
@@ -464,7 +481,7 @@ def profile_form(existing_data=None):
                 conn.execute('''INSERT OR REPLACE INTO users 
                              (email, nickname, gender, birth_year, weight, height, bmi, goals, diseases, allergies, blood_sugar, blood_pressure) 
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                             (st.session_state.user_email, nickname.strip(), gender, birth_year - 543, weight, height, bmi_calc, goals_str, diseases, allergies, bs_to_save, blood_pressure))
+                             (st.session_state.user_email, nickname.strip(), gender, int(birth_year) - 543, weight, height, bmi_calc, goals_str, diseases, allergies, bs_to_save, blood_pressure))
                 conn.commit()
                 conn.close()
                 st.success("🎉 บันทึกข้อมูลสำเร็จ!")
@@ -587,33 +604,43 @@ else:
                     f_name = st.text_input("ชื่อเพื่อน*")
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        f_gender = st.selectbox("เพศ", ["ชาย", "หญิง"])
+                        f_gender = st.selectbox("เพศ*", ["-- กรุณาเลือก --", "ชาย", "หญิง"])
                     with col2:
-                        f_year = st.number_input("ปีเกิด พ.ศ.", 2450, datetime.now().year + 543, 2545)
+                        f_year = st.number_input("ปีเกิด พ.ศ.*", 2450, datetime.now().year + 543, value=None, placeholder="เช่น 2535")
                     with col3:
-                        f_w = st.number_input("น้ำหนัก (กก.)", min_value=1.0, max_value=300.0, value=65.0)
+                        f_w = st.number_input("น้ำหนัก (กก.)*", min_value=1.0, max_value=300.0, value=None, placeholder="เช่น 60.0")
                     
-                    f_h = st.number_input("ส่วนสูง (ซม.)", min_value=50.0, max_value=250.0, value=170.0)
+                    f_h = st.number_input("ส่วนสูง (ซม.)*", min_value=50.0, max_value=250.0, value=None, placeholder="เช่น 165.0")
                     all_goals = ["ลดน้ำหนัก", "ลดไขมัน", "เพิ่มกล้ามเนื้อ", "สร้างความแข็งแรง", "ดูแลสุขภาพองค์รวม"]
-                    f_goals = st.multiselect("เป้าหมายสุขภาพ", all_goals)
+                    f_goals = st.multiselect("เป้าหมายสุขภาพ*", all_goals)
                     
                     f_dis = st.text_input("โรคประจำตัว (ถ้ามี)")
                     f_alg = st.text_input("อาหารที่แพ้ (ถ้ามี)")
                     
                     col_f_bs, col_f_bp = st.columns(2)
                     with col_f_bs:
-                        f_bs = st.number_input("ระดับน้ำตาล FBS (mg/dL) - ลบออกเพื่อไม่ระบุได้", value=None, placeholder="ไม่ระบุ")
+                        f_bs = st.number_input("ระดับน้ำตาล FBS (mg/dL) - เว้นว่างได้", value=None, key="friend_fbs_input", placeholder="ไม่ระบุ")
                     with col_f_bp:
                         f_bp = st.text_input("ความดันโลหิต (mmHg)", placeholder="เช่น 120/80")
 
                     submit_temp = st.form_submit_button("⚡ ประมวลผลคำแนะนำโภชนาการ", type="primary")
                     
                 if submit_temp:
-                    if not f_name.strip() or not f_goals:
-                        st.error("⚠️ กรุณากรอกชื่อและเลือกเป้าหมายสุขภาพอย่างน้อย 1 ข้อ")
+                    if not f_name.strip():
+                        st.error("⚠️ กรุณากรอกชื่อเพื่อน")
+                    elif f_gender not in ["ชาย", "หญิง"]:
+                        st.error("⚠️ กรุณาเลือกเพศ")
+                    elif f_year is None:
+                        st.error("⚠️ กรุณากรอกปีเกิด พ.ศ.")
+                    elif f_w is None or f_w <= 0:
+                        st.error("⚠️ กรุณากรอกน้ำหนัก (กก.)")
+                    elif f_h is None or f_h <= 0:
+                        st.error("⚠️ กรุณากรอกส่วนสูง (ซม.)")
+                    elif not f_goals:
+                        st.error("⚠️ กรุณาเลือกเป้าหมายสุขภาพอย่างน้อย 1 ข้อ")
                     else:
                         temp_profile = {
-                            "nickname": f_name.strip(), "gender": f_gender, "birth_year": f_year - 543,
+                            "nickname": f_name.strip(), "gender": f_gender, "birth_year": int(f_year) - 543,
                             "weight": f_w, "height": f_h, "goals": ", ".join(f_goals),
                             "diseases": f_dis, "allergies": f_alg,
                             "blood_sugar": f_bs if f_bs is not None else None, "blood_pressure": f_bp
@@ -646,10 +673,14 @@ else:
                     st.subheader(f"✏️ แก้ไขข้อมูล: {f_data['nickname']}")
                     with st.form("edit_fav_form"):
                         en = st.text_input("ชื่อเล่น*", value=f_data['nickname'])
-                        eg = st.selectbox("เพศ", ["ชาย", "หญิง"], index=["ชาย", "หญิง"].index(f_data['gender']) if f_data['gender'] in ["ชาย", "หญิง"] else 0)
-                        ey = st.number_input("ปีเกิด พ.ศ.", 2450, datetime.now().year + 543, value=f_data['birth_year']+543)
-                        ew = st.number_input("น้ำหนัก (กก.)", value=f_data['weight'])
-                        eh = st.number_input("ส่วนสูง (ซม.)", value=f_data['height'])
+                        
+                        gender_opts = ["-- กรุณาเลือก --", "ชาย", "หญิง"]
+                        eg_idx = gender_opts.index(f_data['gender']) if f_data['gender'] in ["ชาย", "หญิง"] else 0
+                        eg = st.selectbox("เพศ*", gender_opts, index=eg_idx)
+                        
+                        ey = st.number_input("ปีเกิด พ.ศ.*", 2450, datetime.now().year + 543, value=(f_data['birth_year']+543) if f_data['birth_year'] else None)
+                        ew = st.number_input("น้ำหนัก (กก.)*", value=f_data['weight'])
+                        eh = st.number_input("ส่วนสูง (ซม.)*", value=f_data['height'])
                         
                         all_goals = ["ลดน้ำหนัก", "ลดไขมัน", "เพิ่มกล้ามเนื้อ", "สร้างความแข็งแรง", "ดูแลสุขภาพองค์รวม"]
                         
@@ -658,7 +689,7 @@ else:
                             raw_fgoals = [g.strip() for g in f_data['goals'].split(",")]
                             curr_goals = [g for g in raw_fgoals if g in all_goals]
                             
-                        egoals = st.multiselect("เป้าหมายสุขภาพ", all_goals, default=curr_goals)
+                        egoals = st.multiselect("เป้าหมายสุขภาพ*", all_goals, default=curr_goals)
                         
                         ed = st.text_input("โรคประจำตัว", value=f_data['diseases'])
                         ea = st.text_input("อาหารที่แพ้", value=f_data['allergies'])
@@ -667,7 +698,7 @@ else:
                         ebs_val = float(raw_ebs) if (raw_ebs is not None and float(raw_ebs) > 0) else None
                         
                         ebp_val = f_data['blood_pressure'] if ('blood_pressure' in f_data.keys() and f_data['blood_pressure']) else ""
-                        ebs = st.number_input("ระดับน้ำตาล FBS (mg/dL) - ลบออกเพื่อไม่ระบุได้", value=ebs_val, placeholder="ไม่ระบุ")
+                        ebs = st.number_input("ระดับน้ำตาล FBS (mg/dL) - เว้นว่างได้", value=ebs_val, key=f"edit_fav_fbs_{fav_id}", placeholder="ไม่ระบุ")
                         ebp = st.text_input("ความดันโลหิต (mmHg)", value=ebp_val)
                         eimg = st.file_uploader("รูปภาพใหม่", type=['jpg', 'jpeg', 'png'])
                         
@@ -684,6 +715,16 @@ else:
                         if sub_fav:
                             if not en.strip():
                                 st.error("⚠️ กรุณากรอกชื่อเล่น")
+                            elif eg not in ["ชาย", "หญิง"]:
+                                st.error("⚠️ กรุณาเลือกเพศ")
+                            elif ey is None:
+                                st.error("⚠️ กรุณากรอกปีเกิด พ.ศ.")
+                            elif ew is None or ew <= 0:
+                                st.error("⚠️ กรุณากรอกน้ำหนัก")
+                            elif eh is None or eh <= 0:
+                                st.error("⚠️ กรุณากรอกส่วนสูง")
+                            elif not egoals:
+                                st.error("⚠️ กรุณาเลือกเป้าหมายสุขภาพอย่างน้อย 1 ข้อ")
                             else:
                                 ebmi, _ = calculate_bmi(ew, eh)
                                 egoals_str = ", ".join(egoals)
@@ -692,10 +733,10 @@ else:
                                 if eimg:
                                     img_byte = eimg.read()
                                     conn.execute('''UPDATE favorites SET nickname=?, gender=?, birth_year=?, weight=?, height=?, bmi=?, goals=?, diseases=?, allergies=?, blood_sugar=?, blood_pressure=?, photo=? WHERE id=?''',
-                                                 (en.strip(), eg, ey-543, ew, eh, ebmi, egoals_str, ed, ea, ebs_to_save, ebp, img_byte, fav_id))
+                                                 (en.strip(), eg, int(ey)-543, ew, eh, ebmi, egoals_str, ed, ea, ebs_to_save, ebp, img_byte, fav_id))
                                 else:
                                     conn.execute('''UPDATE favorites SET nickname=?, gender=?, birth_year=?, weight=?, height=?, bmi=?, goals=?, diseases=?, allergies=?, blood_sugar=?, blood_pressure=? WHERE id=?''',
-                                                 (en.strip(), eg, ey-543, ew, eh, ebmi, egoals_str, ed, ea, ebs_to_save, ebp, fav_id))
+                                                 (en.strip(), eg, int(ey)-543, ew, eh, ebmi, egoals_str, ed, ea, ebs_to_save, ebp, fav_id))
                                 conn.commit()
                                 conn.close()
                                 del st.session_state.edit_fav_id
@@ -750,23 +791,33 @@ else:
                         with st.expander("➕ เพิ่มคนโปรดคนใหม่"):
                             with st.form("add_new_favorite"):
                                 n = st.text_input("ชื่อเล่น*")
-                                g = st.selectbox("เพศ", ["ชาย", "หญิง"], key="fav_g")
-                                y = st.number_input("ปีเกิด พ.ศ.", 2450, datetime.now().year + 543, 2520, key="fav_y")
-                                w = st.number_input("น้ำหนัก (กก.)", min_value=1.0, max_value=300.0, value=60.0, key="fav_w")
-                                h = st.number_input("ส่วนสูง (ซม.)", min_value=50.0, max_value=250.0, value=165.0, key="fav_h")
+                                g = st.selectbox("เพศ*", ["-- กรุณาเลือก --", "ชาย", "หญิง"], key="fav_g")
+                                y = st.number_input("ปีเกิด พ.ศ.*", 2450, datetime.now().year + 543, value=None, placeholder="เช่น 2520", key="fav_y")
+                                w = st.number_input("น้ำหนัก (กก.)*", min_value=1.0, max_value=300.0, value=None, placeholder="เช่น 60.0", key="fav_w")
+                                h = st.number_input("ส่วนสูง (ซม.)*", min_value=50.0, max_value=250.0, value=None, placeholder="เช่น 165.0", key="fav_h")
                                 
                                 all_goals = ["ลดน้ำหนัก", "ลดไขมัน", "เพิ่มกล้ามเนื้อ", "สร้างความแข็งแรง", "ดูแลสุขภาพองค์รวม"]
-                                f_goals_new = st.multiselect("เป้าหมายสุขภาพ", all_goals, key="fav_goals")
+                                f_goals_new = st.multiselect("เป้าหมายสุขภาพ*", all_goals, key="fav_goals")
                                 d = st.text_input("โรคประจำตัว", placeholder="ถ้าไม่มีเว้นว่าง")
                                 a = st.text_input("อาหารที่แพ้", placeholder="ถ้าไม่มีเว้นว่าง")
                                 
-                                bs_new = st.number_input("ระดับน้ำตาล FBS (mg/dL) - ลบออกเพื่อไม่ระบุได้", value=None, placeholder="ไม่ระบุ", key="fav_bs")
+                                bs_new = st.number_input("ระดับน้ำตาล FBS (mg/dL) - เว้นว่างได้", value=None, placeholder="ไม่ระบุ", key="add_fav_fbs_input")
                                 bp_new = st.text_input("ความดันโลหิต (mmHg)", placeholder="เช่น 120/80", key="fav_bp")
                                 img_file = st.file_uploader("รูปภาพ", type=['jpg', 'jpeg', 'png'])
                                 
                                 if st.form_submit_button("💾 บันทึกคนโปรด", type="primary"):
-                                    if not n.strip() or not f_goals_new:
-                                        st.error("⚠️ กรุณากรอกชื่อและเป้าหมายสุขภาพ")
+                                    if not n.strip():
+                                        st.error("⚠️ กรุณากรอกชื่อเล่น")
+                                    elif g not in ["ชาย", "หญิง"]:
+                                        st.error("⚠️ กรุณาเลือกเพศ")
+                                    elif y is None:
+                                        st.error("⚠️ กรุณากรอกปีเกิด พ.ศ.")
+                                    elif w is None or w <= 0:
+                                        st.error("⚠️ กรุณากรอกน้ำหนัก")
+                                    elif h is None or h <= 0:
+                                        st.error("⚠️ กรุณากรอกส่วนสูง")
+                                    elif not f_goals_new:
+                                        st.error("⚠️ กรุณาเลือกเป้าหมายสุขภาพอย่างน้อย 1 ข้อ")
                                     else:
                                         img_byte = img_file.read() if img_file else None
                                         fbmi_calc, _ = calculate_bmi(w, h)
@@ -775,7 +826,7 @@ else:
                                         conn.execute('''INSERT INTO favorites 
                                                      (owner_email, nickname, gender, birth_year, weight, height, bmi, goals, diseases, allergies, blood_sugar, blood_pressure, photo) 
                                                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-                                                     (st.session_state.user_email, n.strip(), g, y - 543, w, h, fbmi_calc, goals_str, d, a, bs_new_save, bp_new, img_byte))
+                                                     (st.session_state.user_email, n.strip(), g, int(y) - 543, w, h, fbmi_calc, goals_str, d, a, bs_new_save, bp_new, img_byte))
                                         conn.commit()
                                         conn.close()
                                         st.rerun()
