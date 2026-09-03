@@ -734,7 +734,7 @@ else:
 
                                 with st.container(border=True):
                                     if f['photo']:
-                                        st.image(f['photo'], use_column_width=True)
+                                        st.image(f['photo'], use_container_width=True)
                                     else:
                                         st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=80)
                                     
