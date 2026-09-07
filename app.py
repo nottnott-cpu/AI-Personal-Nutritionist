@@ -462,7 +462,7 @@ def render_ai_result_expanders(ai_text):
     sections = ai_text.split("[SECTION_BREAK]")
     sec1 = sections[0].replace("[SECTION_1]", "").strip() if len(sections) > 0 else "ไม่มีข้อมูล"
     sec2 = sections[1].replace("[SECTION_2]", "").strip() if len(sections) > 1 else "ไม่มีข้อมูล"
-    sec3 = sections[2].replace("[SECTION_3]", "").strip() if len(sections) > 3 else "ไม่มีข้อมูล"
+    sec3 = sections[2].replace("[SECTION_3]", "").strip() if len(sections) > 2 else "ไม่มีข้อมูล"
     sec4 = sections[3].replace("[SECTION_4]", "").strip() if len(sections) > 3 else "ไม่มีข้อมูล"
 
     with st.expander("1. สรุปภาวะสุขภาพ & คำแนะนำโภชนาการภาพรวม", expanded=True):
