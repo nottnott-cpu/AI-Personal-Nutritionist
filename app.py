@@ -11,14 +11,16 @@ import io
 import re
 import base64
 import calendar
-
 # --- 1. SETUP & CONFIG ---
-st.set_page_config(page_title="AI Thai Nutritionist Pro", page_icon="🥗", layout="wide")
+# กำหนดค่า Global Constants ไว้ด้านบนสุดก่อนเรียกใช้งาน
+MODEL_NAME = 'gemini-2.5-flash'
+FALLBACK_MODEL = 'gemini-1.5-flash'
+
+st.set_page_config(page_title="ไทยกินดี AI Plus", page_icon="🥗", layout="wide")
 
 # ⚠️ ใส่ API Key จาก Google AI Studio ของคุณที่นี่ (ผ่าน Streamlit Secrets)
 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
-MODEL_NAME = 'gemini-2.5-flash'
 
 # --- Custom CSS ---
 st.markdown("""
