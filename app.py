@@ -259,7 +259,7 @@ def get_streak_badges(streak):
         b["unlocked"] = streak >= b["target"]
     return badges
 
-# --- Visual Gauge Bar Functions (ปรับ height=70 และ margin t=30 เพื่อให้ตัวเลขแสดงครบถ้วน) ---
+# --- Visual Gauge Bar Functions ---
 def render_bmi_bar(bmi_value):
     _, status, color_text, hex_color = calculate_bmi(bmi_value, 100) if bmi_value > 0 else (0, "ไม่มีข้อมูล", "ไม่มีข้อมูล", "#475569")
     
@@ -267,7 +267,6 @@ def render_bmi_bar(bmi_value):
     
     with st.expander(header_title, expanded=False):
         fig = go.Figure()
-        # แถบย่อย (ขนาด width = 0.3)
         fig.add_trace(go.Bar(y=['BMI'], x=[6.5], base=12, orientation='h', marker=dict(color='#38BDF8'), hoverinfo='none', showlegend=False, width=0.3))
         fig.add_trace(go.Bar(y=['BMI'], x=[4.5], base=18.5, orientation='h', marker=dict(color='#22C55E'), hoverinfo='none', showlegend=False, width=0.3))
         fig.add_trace(go.Bar(y=['BMI'], x=[2.0], base=23.0, orientation='h', marker=dict(color='#FB923C'), hoverinfo='none', showlegend=False, width=0.3))
@@ -275,7 +274,6 @@ def render_bmi_bar(bmi_value):
         
         display_bmi = max(12.2, min(bmi_value if bmi_value > 0 else 12.2, 31.8))
         
-        # จุดบอกตำแหน่งพร้อมแสดงตัวเลขกำกับด้านบน
         fig.add_trace(go.Scatter(
             x=[display_bmi], y=['BMI'], 
             mode='markers+text', 
@@ -286,7 +284,6 @@ def render_bmi_bar(bmi_value):
             hoverinfo='none', showlegend=False
         ))
         
-        # เพิ่ม height=70 และ margin t=30 ขยายพื้นที่แนวดิ่งเต็มที่
         fig.update_layout(
             barmode='stack', height=70, margin=dict(l=0, r=0, t=30, b=5), 
             paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
@@ -306,7 +303,6 @@ def render_sugar_bar(sugar_val):
         
         display_val = max(70, min(sugar_val, 170))
         
-        # จุดบอกตำแหน่งพร้อมแสดงตัวเลขกำกับด้านบน
         fig.add_trace(go.Scatter(
             x=[display_val], y=['Sugar'], 
             mode='markers+text', 
@@ -317,7 +313,6 @@ def render_sugar_bar(sugar_val):
             hoverinfo='none', showlegend=False
         ))
         
-        # เพิ่ม height=70 และ margin t=30 ขยายพื้นที่แนวดิ่งเต็มที่
         fig.update_layout(
             barmode='stack', height=70, margin=dict(l=0, r=0, t=30, b=5), 
             paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
@@ -342,7 +337,6 @@ def render_bp_bar(bp_str):
         
         display_val = max(90, min(sys, 180))
         
-        # จุดบอกตำแหน่งพร้อมแสดงตัวเลขกำกับด้านบน
         fig.add_trace(go.Scatter(
             x=[display_val], y=['BP'], 
             mode='markers+text', 
@@ -353,7 +347,6 @@ def render_bp_bar(bp_str):
             hoverinfo='none', showlegend=False
         ))
         
-        # เพิ่ม height=70 และ margin t=30 ขยายพื้นที่แนวดิ่งเต็มที่
         fig.update_layout(
             barmode='stack', height=70, margin=dict(l=0, r=0, t=30, b=5), 
             paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
@@ -683,7 +676,6 @@ else:
                 user_h = user['height'] if user['height'] is not None else 165.0
                 bmi_val, _, _, _ = calculate_bmi(user_w, user_h)
                 
-                # --- ย่อการแสดงผลทั้งหมดเป็น Default (expanded=False) ---
                 render_bmi_bar(bmi_val)
                 
                 if user['blood_sugar'] and float(user['blood_sugar']) > 0:
@@ -744,7 +736,6 @@ else:
                 lu_val = log['lunch'] if log else ""
                 dn_val = log['dinner'] if log else ""
                 
-                # --- บันทึกน้ำดื่ม ---
                 target_water = 2000
                 cups_curr = round(water_val / 250, 1)
                 cups_target = int(target_water / 250)
@@ -778,7 +769,6 @@ else:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- บันทึกอาหาร ---
                 st.markdown("**บันทึกสิ่งที่รับประทานวันนี้**")
                 bf = st.text_input("มื้อเช้า", value=bf_val, placeholder="เช่น โจ๊กหมูใส่ไข่, กาแฟดำ")
                 lu = st.text_input("มื้อกลางวัน", value=lu_val, placeholder="เช่น ข้าวมันไก่เนื้ออก, ชามะนาวหวานน้อย")
@@ -797,7 +787,6 @@ else:
                     st.rerun()
                 conn.close()
 
-                # --- ปฏิทินรายเดือน ---
                 st.markdown("<br>**ปฏิทินประวัติการรับประทานอาหารรายเดือน**", unsafe_allow_html=True)
                 
                 col_sel_m, col_sel_y = st.columns([2, 1])
@@ -956,19 +945,28 @@ else:
 
                     with st.chat_message("assistant"):
                         with st.spinner("AI กำลังคิดคำตอบ..."):
+                            # ป้องกัน Error จากค่า NoneType ในฐานข้อมูล
+                            user_nickname = user['nickname'] if user['nickname'] else "ผู้ใช้งาน"
+                            user_diseases = user['diseases'] if user['diseases'] else 'ไม่มี'
+                            user_allergies = user['allergies'] if user['allergies'] else 'ไม่มี'
+                            user_goals = user['goals'] if user['goals'] else 'ดูแลสุขภาพ'
+
                             chat_prompt = f"""
-                            คุณคือนักโภชนาการประจำตัวของผู้ใช้ชื่อ {user['nickname']} 
-                            - ข้อจำกัดสุขภาพ: โรคประจำตัว ({user['diseases'] if user['diseases'] else 'ไม่มี'}), แพ้อาหาร ({user['allergies'] if user['allergies'] else 'ไม่มี'})
-                            - เป้าหมาย: {user['goals']}
+                            คุณคือนักโภชนาการประจำตัวของผู้ใช้ชื่อ {user_nickname} 
+                            - ข้อจำกัดสุขภาพ: โรคประจำตัว ({user_diseases}), แพ้อาหาร ({user_allergies})
+                            - เป้าหมาย: {user_goals}
                             
                             คำถามจากผู้ใช้: "{user_prompt}"
                             ตอบคำถามให้ตรงประเด็น สั้น กระชับ เป็นกันเอง สอดคล้องกับสุขภาพของผู้ใช้
                             """
                             try:
-                                response = client.models.generate_content(model=MODEL_NAME, contents=chat_prompt)
+                                response = client.models.generate_content(
+                                    model=MODEL_NAME, 
+                                    contents=chat_prompt
+                                )
                                 ans_text = response.text
                             except Exception as e:
-                                ans_text = "ขออภัย ไม่สามารถประมวลผลคำตอบได้ในขณะนี้"
+                                ans_text = f"⚠️ **เกิดข้อผิดพลาดในการเรียกใช้ AI:** `{str(e)}`"
                             
                             st.markdown(ans_text)
                             st.session_state.messages.append({"role": "assistant", "content": ans_text})
