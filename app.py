@@ -169,6 +169,29 @@ def init_db():
 init_db()
 
 # --- Helper Functions ---
+def generate_ai_response_with_retry(prompt, config=None, retries=3):
+    """ฟังก์ชันช่วยส่งคำขอไปหา AI พร้อมระบบ Retry และ Fallback Model เมื่อเจอ 503"""
+    models_to_try = [MODEL_NAME, FALLBACK_MODEL]
+    
+    for model in models_to_try:
+        for attempt in range(retries):
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=config
+                )
+                return response.text
+            except Exception as e:
+                err_msg = str(e)
+                if ("503" in err_msg or "UNAVAILABLE" in err_msg or "high demand" in err_msg) and attempt < retries - 1:
+                    time.sleep(2) # รอก่อนลองใหม่
+                    continue
+                elif model == models_to_try[-1] and attempt == retries - 1:
+                    return f"⚠️ ระบบ AI ขัดข้องชั่วคราวเนื่องจากปริมาณการใช้งานสูง (Server Busy) กรุณาลองใหม่อีกครั้งในอีกสักครู่ ({err_msg})"
+                else:
+                    break
+
 def calculate_bmi(weight, height):
     if height and weight and height > 0 and weight > 0:
         height_m = height / 100
@@ -417,15 +440,8 @@ def ask_ai_nutritionist(profile):
     (คำแนะนำการปฏิบัติตัว 3 ข้อ)
     """
     
-    try:
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.7)
-        )
-        return response.text
-    except Exception as e:
-        return f"เกิดข้อผิดพลาดในการเชื่อมต่อ AI: {str(e)}"
+    config = types.GenerateContentConfig(temperature=0.7)
+    return generate_ai_response_with_retry(prompt, config=config)
 
 def extract_meals_from_ai(ai_text):
     bf, lu, dn = "", "", ""
@@ -945,7 +961,6 @@ else:
 
                     with st.chat_message("assistant"):
                         with st.spinner("AI กำลังคิดคำตอบ..."):
-                            # ป้องกัน Error จากค่า NoneType ในฐานข้อมูล
                             user_nickname = user['nickname'] if user['nickname'] else "ผู้ใช้งาน"
                             user_diseases = user['diseases'] if user['diseases'] else 'ไม่มี'
                             user_allergies = user['allergies'] if user['allergies'] else 'ไม่มี'
@@ -959,14 +974,8 @@ else:
                             คำถามจากผู้ใช้: "{user_prompt}"
                             ตอบคำถามให้ตรงประเด็น สั้น กระชับ เป็นกันเอง สอดคล้องกับสุขภาพของผู้ใช้
                             """
-                            try:
-                                response = client.models.generate_content(
-                                    model=MODEL_NAME, 
-                                    contents=chat_prompt
-                                )
-                                ans_text = response.text
-                            except Exception as e:
-                                ans_text = f"⚠️ **เกิดข้อผิดพลาดในการเรียกใช้ AI:** `{str(e)}`"
+                            
+                            ans_text = generate_ai_response_with_retry(chat_prompt)
                             
                             st.markdown(ans_text)
                             st.session_state.messages.append({"role": "assistant", "content": ans_text})
