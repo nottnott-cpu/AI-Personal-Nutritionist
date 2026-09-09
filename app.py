@@ -183,7 +183,12 @@ def generate_ai_response_with_retry(prompt, config=None, retries=3):
                     contents=prompt,
                     config=config
                 )
-                return response.text
+                if hasattr(response, 'text') and response.text:
+                    return str(response.text)
+                elif isinstance(response, str):
+                    return response
+                else:
+                    return str(response)
             except Exception as e:
                 err_msg = str(e)
                 if ("503" in err_msg or "UNAVAILABLE" in err_msg or "high demand" in err_msg) and attempt < retries - 1:
@@ -193,6 +198,7 @@ def generate_ai_response_with_retry(prompt, config=None, retries=3):
                     return f"⚠️ ระบบ AI ขัดข้องชั่วคราวเนื่องจากปริมาณการใช้งานสูง (Server Busy) กรุณาลองใหม่อีกครั้งในอีกสักครู่ ({err_msg})"
                 else:
                     break
+    return "⚠️ ไม่สามารถดึงข้อมูลจาก AI ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง"
 
 def calculate_bmi(weight, height):
     if height and weight and height > 0 and weight > 0:
@@ -381,6 +387,9 @@ def render_bp_bar(bp_str):
 
 def play_audio_from_text(text):
     try:
+        if not isinstance(text, str):
+            text = str(text) if text is not None else ""
+            
         clean_text = re.sub(r'<[^>]*>', '', text)
         clean_text = re.sub(r'[|:─\-\*#_`~]', ' ', clean_text)
         clean_text = ' '.join(clean_text.split())
@@ -446,6 +455,9 @@ def ask_ai_nutritionist(profile):
     return generate_ai_response_with_retry(prompt, config=config)
 
 def extract_meals_from_ai(ai_text):
+    if not isinstance(ai_text, str):
+        ai_text = str(ai_text) if ai_text is not None else ""
+        
     bf, lu, dn = "", "", ""
     lines = ai_text.split('\n')
     for line in lines:
@@ -461,6 +473,9 @@ def extract_meals_from_ai(ai_text):
     return bf, lu, dn
 
 def render_ai_result_expanders(ai_text):
+    if not isinstance(ai_text, str):
+        ai_text = str(ai_text) if ai_text is not None else ""
+
     sections = ai_text.split("[SECTION_BREAK]")
     sec1 = sections[0].replace("[SECTION_1]", "").strip() if len(sections) > 0 else "ไม่มีข้อมูล"
     sec2 = sections[1].replace("[SECTION_2]", "").strip() if len(sections) > 1 else "ไม่มีข้อมูล"
