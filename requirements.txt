@@ -1,5 +1,5 @@
 streamlit
+psycopg2-binary
 google-genai
 plotly
 gTTS
-psycopg2-binary
