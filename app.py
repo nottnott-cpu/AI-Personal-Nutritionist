@@ -139,40 +139,67 @@ def get_db_connection():
 def init_db():
     if not DATABASE_URL:
         return
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    cur.execute('''CREATE TABLE IF NOT EXISTS users 
-                 (email TEXT PRIMARY KEY, nickname TEXT, gender TEXT, birth_year INTEGER, 
-                  weight REAL, height REAL, bmi REAL, goals TEXT, diseases TEXT, allergies TEXT,
-                  blood_sugar REAL, blood_pressure TEXT, streak_count INTEGER DEFAULT 1, 
-                  last_login_date TEXT, freeze_used_month TEXT)''')
-    
-    # Auto Migration สำหรับเพิ่มคอลัมน์ใหม่หากตารางมีอยู่แล้ว
-    columns_to_add = [
-        ("streak_count", "INTEGER DEFAULT 1"),
-        ("last_login_date", "TEXT"),
-        ("freeze_used_month", "TEXT")
-    ]
-    for col_name, col_type in columns_to_add:
-        try:
-            cur.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
-            conn.commit()
-        except Exception:
-            conn.rollback()
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # 1. ตาราง users
+        cur.execute('''CREATE TABLE IF NOT EXISTS users 
+                     (email TEXT PRIMARY KEY, 
+                      nickname TEXT, 
+                      gender TEXT, 
+                      birth_year INTEGER, 
+                      weight REAL, 
+                      height REAL, 
+                      bmi REAL, 
+                      goals TEXT, 
+                      diseases TEXT, 
+                      allergies TEXT,
+                      blood_sugar REAL, 
+                      blood_pressure TEXT, 
+                      streak_count INTEGER DEFAULT 1, 
+                      last_login_date TEXT, 
+                      freeze_used_month TEXT);''')
+        
+        # Auto Migration เผื่อสำหรับตารางที่มีอยู่แล้วแต่ขาดคอลัมน์
+        columns_to_add = [
+            ("streak_count", "INTEGER DEFAULT 1"),
+            ("last_login_date", "TEXT"),
+            ("freeze_used_month", "TEXT")
+        ]
+        for col_name, col_type in columns_to_add:
+            try:
+                cur.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type};")
+                conn.commit()
+            except Exception:
+                conn.rollback()
 
-    cur.execute('''CREATE TABLE IF NOT EXISTS daily_logs 
-                 (id SERIAL PRIMARY KEY, email TEXT, log_date TEXT, 
-                  breakfast TEXT, lunch TEXT, dinner TEXT, water_ml INTEGER DEFAULT 0)''')
+        # 2. ตาราง daily_logs
+        cur.execute('''CREATE TABLE IF NOT EXISTS daily_logs 
+                     (id SERIAL PRIMARY KEY, 
+                      email TEXT, 
+                      log_date TEXT, 
+                      breakfast TEXT, 
+                      lunch TEXT, 
+                      dinner TEXT, 
+                      water_ml INTEGER DEFAULT 0);''')
 
-    cur.execute('''CREATE TABLE IF NOT EXISTS health_history 
-                 (id SERIAL PRIMARY KEY, email TEXT, record_date TEXT, 
-                  weight REAL, blood_sugar REAL, blood_pressure TEXT)''')
+        # 3. ตาราง health_history
+        cur.execute('''CREATE TABLE IF NOT EXISTS health_history 
+                     (id SERIAL PRIMARY KEY, 
+                      email TEXT, 
+                      record_date TEXT, 
+                      weight REAL, 
+                      blood_sugar REAL, 
+                      blood_pressure TEXT);''')
 
-    conn.commit()
-    cur.close()
-    conn.close()
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Database Initialization Error: {e}")
 
+# เรียกใช้งานการสร้างตารางทันทีที่แอปโหลดขึ้นมา
 init_db()
 
 # --- Helper Functions ---
@@ -242,43 +269,51 @@ def get_bp_status(bp_str):
         return "สูงเกินไป (ความดันสูง)", ":red[สูงเกินไป (ความดันสูง)]", "#B91C1C"
 
 def update_streak(email):
+    # เรียก init_db ป้องกันกรณีตารางยังไม่ถูกสร้าง
+    init_db()
     today = date.today()
     today_str = str(today)
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT streak_count, last_login_date, freeze_used_month FROM users WHERE email = %s", (email,))
-    user = cur.fetchone()
     
-    if user:
-        last_date_str = user['last_login_date']
-        streak = user['streak_count'] or 1
-        freeze_month = user['freeze_used_month'] or ""
-        current_month = today.strftime("%Y-%m")
+    try:
+        cur.execute("SELECT streak_count, last_login_date, freeze_used_month FROM users WHERE email = %s", (email,))
+        user = cur.fetchone()
         
-        if last_date_str != today_str:
-            if last_date_str:
-                last_date = datetime.strptime(last_date_str, "%Y-%m-%d").date()
-                delta = (today - last_date).days
-                
-                if delta == 1:
-                    streak += 1
-                elif delta == 2:
-                    if freeze_month != current_month:
-                        freeze_month = current_month
+        if user:
+            last_date_str = user['last_login_date']
+            streak = user['streak_count'] or 1
+            freeze_month = user['freeze_used_month'] or ""
+            current_month = today.strftime("%Y-%m")
+            
+            if last_date_str != today_str:
+                if last_date_str:
+                    last_date = datetime.strptime(last_date_str, "%Y-%m-%d").date()
+                    delta = (today - last_date).days
+                    
+                    if delta == 1:
                         streak += 1
-                        st.toast("❄️ ระบบใช้ Streak Freeze ช่วยรักษาสถิติความต่อเนื่องของคุณ!", icon="❄️")
-                    else:
+                    elif delta == 2:
+                        if freeze_month != current_month:
+                            freeze_month = current_month
+                            streak += 1
+                            st.toast("❄️ ระบบใช้ Streak Freeze ช่วยรักษาสถิติความต่อเนื่องของคุณ!", icon="❄️")
+                        else:
+                            streak = 1
+                    elif delta > 2:
                         streak = 1
-                elif delta > 2:
+                else:
                     streak = 1
-            else:
-                streak = 1
-                
-            cur.execute("UPDATE users SET streak_count = %s, last_login_date = %s, freeze_used_month = %s WHERE email = %s", 
-                        (streak, today_str, freeze_month, email))
-            conn.commit()
-    cur.close()
-    conn.close()
+                    
+                cur.execute("UPDATE users SET streak_count = %s, last_login_date = %s, freeze_used_month = %s WHERE email = %s", 
+                            (streak, today_str, freeze_month, email))
+                conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"Error updating streak: {e}")
+    finally:
+        cur.close()
+        conn.close()
 
 def get_streak_badges(streak):
     badges = [
@@ -294,7 +329,6 @@ def get_streak_badges(streak):
 # --- Visual Gauge Bar Functions ---
 def render_bmi_bar(bmi_value):
     _, status, color_text, hex_color = calculate_bmi(bmi_value, 100) if bmi_value > 0 else (0, "ไม่มีข้อมูล", "ไม่มีข้อมูล", "#475569")
-    
     header_title = f"BMI: {bmi_value if bmi_value > 0 else 'ไม่ได้ระบุ'} — {color_text}"
     
     with st.expander(header_title, expanded=False):
