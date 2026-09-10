@@ -1,4 +1,4 @@
-import Streamlit as st
+import streamlit as st
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
