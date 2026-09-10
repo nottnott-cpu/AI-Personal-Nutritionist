@@ -1,4 +1,4 @@
-import streamlit as st
+import Streamlit as st
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
@@ -536,8 +536,11 @@ def login_page():
             submit_login = st.form_submit_button("เข้าสู่ระบบ / สมัครสมาชิก", type="primary", use_container_width=True)
             if submit_login:
                 if "@" in email:
-                    st.session_state.user_email = email.strip()
-                    update_streak(email.strip())
+                    target_email = email.strip()
+                    # เคลียร์ session ค้างเก่าทั้งหมดป้องกันข้อมูลปนกันระหว่างผู้ใช้
+                    st.session_state.clear()
+                    st.session_state.user_email = target_email
+                    update_streak(target_email)
                     st.session_state.active_tab = "my_meal"
                     st.rerun()
                 else:
@@ -755,7 +758,8 @@ else:
                     st.rerun()
             with tab_col5:
                 if st.button("ออกจากระบบ", type="secondary", use_container_width=True):
-                    del st.session_state.user_email
+                    # เคลียร์ session ทั้งหมดเพื่อป้องกันประวัติแชต/ข้อมูลค้าง
+                    st.session_state.clear()
                     st.rerun()
 
             st.markdown("<br>", unsafe_allow_html=True)
@@ -1042,15 +1046,17 @@ else:
                 st.markdown("##### ถาม-ตอบ เรื่องอาหารและสุขภาพกับ AI")
                 st.caption("สอบถามเมนูอาหารเฉพาะหน้า เช่น 'มื้อนี้กินอะไรดีในเซเว่น?' หรือ 'ชานมไข่มุกกี่แคล?'")
                 
-                if "messages" not in st.session_state:
-                    st.session_state.messages = []
+                # ผูก key ของ messages แยกรายผู้ใช้ (email)
+                chat_key = f"messages_{st.session_state.user_email}"
+                if chat_key not in st.session_state:
+                    st.session_state[chat_key] = []
 
-                for message in st.session_state.messages:
+                for message in st.session_state[chat_key]:
                     with st.chat_message(message["role"]):
                         st.markdown(message["content"])
 
                 if user_prompt := st.chat_input("พิมพ์คำถามเรื่องอาหารและสุขภาพที่นี่..."):
-                    st.session_state.messages.append({"role": "user", "content": user_prompt})
+                    st.session_state[chat_key].append({"role": "user", "content": user_prompt})
                     with st.chat_message("user"):
                         st.markdown(user_prompt)
 
@@ -1073,4 +1079,4 @@ else:
                             ans_text = generate_ai_response_with_retry(chat_prompt)
                             
                             st.markdown(ans_text)
-                            st.session_state.messages.append({"role": "assistant", "content": ans_text})
+                            st.session_state[chat_key].append({"role": "assistant", "content": ans_text})
