@@ -143,7 +143,7 @@ def init_db():
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # 1. ตาราง users
+        # 1. สร้างตาราง users
         cur.execute('''CREATE TABLE IF NOT EXISTS users 
                      (email TEXT PRIMARY KEY, 
                       nickname TEXT, 
@@ -161,20 +161,20 @@ def init_db():
                       last_login_date TEXT, 
                       freeze_used_month TEXT);''')
         
-        # Auto Migration เผื่อสำหรับตารางที่มีอยู่แล้วแต่ขาดคอลัมน์
-        columns_to_add = [
+        # Auto-migration หากมีตารางเดิมอยู่แล้วแต่คอลัมน์ไม่ครบ
+        columns = [
             ("streak_count", "INTEGER DEFAULT 1"),
             ("last_login_date", "TEXT"),
             ("freeze_used_month", "TEXT")
         ]
-        for col_name, col_type in columns_to_add:
+        for col_name, col_type in columns:
             try:
                 cur.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type};")
                 conn.commit()
             except Exception:
                 conn.rollback()
 
-        # 2. ตาราง daily_logs
+        # 2. สร้างตาราง daily_logs
         cur.execute('''CREATE TABLE IF NOT EXISTS daily_logs 
                      (id SERIAL PRIMARY KEY, 
                       email TEXT, 
@@ -184,7 +184,7 @@ def init_db():
                       dinner TEXT, 
                       water_ml INTEGER DEFAULT 0);''')
 
-        # 3. ตาราง health_history
+        # 3. สร้างตาราง health_history
         cur.execute('''CREATE TABLE IF NOT EXISTS health_history 
                      (id SERIAL PRIMARY KEY, 
                       email TEXT, 
@@ -197,9 +197,9 @@ def init_db():
         cur.close()
         conn.close()
     except Exception as e:
-        print(f"Database Initialization Error: {e}")
+        st.error(f"เกิดข้อผิดพลาดในการสร้างตารางฐานข้อมูล: {e}")
 
-# เรียกใช้งานการสร้างตารางทันทีที่แอปโหลดขึ้นมา
+# เรียกใช้งานการสร้างตารางทันทีที่ Script ถูกโหลด
 init_db()
 
 # --- Helper Functions ---
@@ -221,7 +221,7 @@ def generate_ai_response_with_retry(prompt, config=None, retries=3):
                     time.sleep(2)
                     continue
                 elif model == models_to_try[-1] and attempt == retries - 1:
-                    return f"⚠️ ระบบ AI ขัดข้องชั่วคราวเนื่องจากปริมาณการใช้งานสูง (Server Busy) กรุณาลองใหม่อีกครั้งในอีกสักครู่ ({err_msg})"
+                    return f"⚠️ ระบบ AI ขัดข้องชั่วคราวเนื่องจากปริมาณการใช้งานสูง กรุณาลองใหม่อีกครั้ง ({err_msg})"
                 else:
                     break
 
@@ -269,8 +269,7 @@ def get_bp_status(bp_str):
         return "สูงเกินไป (ความดันสูง)", ":red[สูงเกินไป (ความดันสูง)]", "#B91C1C"
 
 def update_streak(email):
-    # เรียก init_db ป้องกันกรณีตารางยังไม่ถูกสร้าง
-    init_db()
+    init_db() # ตรวจสอบตารางก่อนทำรายการ
     today = date.today()
     today_str = str(today)
     conn = get_db_connection()
@@ -597,6 +596,7 @@ def profile_form(existing_data=None):
             if not nickname.strip() or gender not in ["ชาย", "หญิง"] or not birth_year or not weight or not height or not goals:
                 st.error("กรุณากรอกข้อมูลที่จำเป็น (*) ให้ครบถ้วน")
             else:
+                init_db() # มั่นใจว่ามีตารางก่อน Upsert
                 bmi_calc, _, _, _ = calculate_bmi(weight, height)
                 conn = get_db_connection()
                 cur = conn.cursor()
@@ -642,6 +642,8 @@ def profile_form(existing_data=None):
 if 'user_email' not in st.session_state:
     login_page()
 else:
+    init_db() # เรียกสร้าง/ตรวจสอบตารางทันทีที่ล็อกอินผ่าน
+
     if 'active_tab' not in st.session_state:
         st.session_state.active_tab = "my_meal"
 
@@ -1034,7 +1036,7 @@ else:
                     )
                     st.plotly_chart(fig_w, use_container_width=True)
                 else:
-                    st.info("ยังไม่มีข้อมูลบันทึกน้ำหนัก ย้อนหลัง กรุณากรอกบันทึกสถิติด้านบนเพื่อเริ่มติดตามกราฟ")
+                    st.info("ยังไม่มีข้อมูลบันทึกน้ำหนักย้อนหลัง กรุณากรอกบันทึกสถิติด้านบนเพื่อเริ่มติดตามกราฟ")
 
             # ================= TAB 4: ถาม-ตอบ AI โภชนาการ =================
             elif st.session_state.active_tab == "ai_chat":
