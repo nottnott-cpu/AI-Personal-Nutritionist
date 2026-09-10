@@ -7,7 +7,7 @@ from google.genai import types
 from datetime import datetime, date, timedelta
 import plotly.graph_objects as go
 import plotly.express as px
-from gtts import gTTS
+from gTTS import gTTS
 import io
 import re
 import base64
@@ -131,12 +131,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# --- 2. DATABASE FUNCTIONS (PostgreSQL / Supabase) ---
+# --- 2. DATABASE FUNCTIONS (OPTIMIZED WITH CACHING) ---
 def get_db_connection():
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-    return conn
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
-def init_db():
+@st.cache_resource
+def setup_database_schema():
     if not DATABASE_URL:
         return
     conn = None
@@ -144,7 +144,6 @@ def init_db():
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # 1. สร้างตาราง users
         cur.execute('''CREATE TABLE IF NOT EXISTS users 
                      (email TEXT PRIMARY KEY, 
                       nickname TEXT, 
@@ -163,7 +162,6 @@ def init_db():
                       freeze_used_month TEXT);''')
         conn.commit()
 
-        # Auto-migration สำหรับคอลัมน์ใหม่เพิ่มเติม
         columns = [
             ("streak_count", "INTEGER DEFAULT 1"),
             ("last_login_date", "TEXT"),
@@ -176,7 +174,6 @@ def init_db():
             except Exception:
                 conn.rollback()
 
-        # 2. สร้างตาราง daily_logs
         cur.execute('''CREATE TABLE IF NOT EXISTS daily_logs 
                      (id SERIAL PRIMARY KEY, 
                       email TEXT, 
@@ -187,7 +184,6 @@ def init_db():
                       water_ml INTEGER DEFAULT 0);''')
         conn.commit()
 
-        # 3. สร้างตาราง health_history
         cur.execute('''CREATE TABLE IF NOT EXISTS health_history 
                      (id SERIAL PRIMARY KEY, 
                       email TEXT, 
@@ -201,13 +197,13 @@ def init_db():
     except Exception as e:
         if conn:
             conn.rollback()
-        st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ/สร้างตารางฐานข้อมูล: {e}")
+        st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล: {e}")
     finally:
         if conn:
             conn.close()
 
-# เรียกใช้งานการสร้างตารางทันทีที่ Script ถูกโหลด
-init_db()
+# เรียกใช้เฉพาะครั้งแรกที่ App เริ่มทำงาน
+setup_database_schema()
 
 # --- Helper Functions ---
 def generate_ai_response_with_retry(prompt, config=None, retries=3):
@@ -276,7 +272,6 @@ def get_bp_status(bp_str):
         return "สูงเกินไป (ความดันสูง)", ":red[สูงเกินไป (ความดันสูง)]", "#B91C1C"
 
 def update_streak(email):
-    init_db()
     today = date.today()
     today_str = str(today)
     conn = get_db_connection()
@@ -603,7 +598,6 @@ def profile_form(existing_data=None):
             if not nickname.strip() or gender not in ["ชาย", "หญิง"] or not birth_year or not weight or not height or not goals:
                 st.error("กรุณากรอกข้อมูลที่จำเป็น (*) ให้ครบถ้วน")
             else:
-                init_db()
                 bmi_calc, _, _, _ = calculate_bmi(weight, height)
                 conn = get_db_connection()
                 cur = conn.cursor()
@@ -649,8 +643,6 @@ def profile_form(existing_data=None):
 if 'user_email' not in st.session_state:
     login_page()
 else:
-    init_db()
-
     if 'active_tab' not in st.session_state:
         st.session_state.active_tab = "my_meal"
 
