@@ -197,7 +197,7 @@ def init_db():
         cur.close()
         conn.close()
     except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการสร้างตารางฐานข้อมูล: {e}")
+        st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ/สร้างตารางฐานข้อมูล: {e}")
 
 # เรียกใช้งานการสร้างตารางทันทีที่ Script ถูกโหลด
 init_db()
@@ -269,7 +269,7 @@ def get_bp_status(bp_str):
         return "สูงเกินไป (ความดันสูง)", ":red[สูงเกินไป (ความดันสูง)]", "#B91C1C"
 
 def update_streak(email):
-    init_db() # ตรวจสอบตารางก่อนทำรายการ
+    init_db()
     today = date.today()
     today_str = str(today)
     conn = get_db_connection()
@@ -596,7 +596,7 @@ def profile_form(existing_data=None):
             if not nickname.strip() or gender not in ["ชาย", "หญิง"] or not birth_year or not weight or not height or not goals:
                 st.error("กรุณากรอกข้อมูลที่จำเป็น (*) ให้ครบถ้วน")
             else:
-                init_db() # มั่นใจว่ามีตารางก่อน Upsert
+                init_db()
                 bmi_calc, _, _, _ = calculate_bmi(weight, height)
                 conn = get_db_connection()
                 cur = conn.cursor()
@@ -642,7 +642,7 @@ def profile_form(existing_data=None):
 if 'user_email' not in st.session_state:
     login_page()
 else:
-    init_db() # เรียกสร้าง/ตรวจสอบตารางทันทีที่ล็อกอินผ่าน
+    init_db()
 
     if 'active_tab' not in st.session_state:
         st.session_state.active_tab = "my_meal"
