@@ -131,7 +131,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# --- 2. DATABASE FUNCTIONS (OPTIMIZED WITH CACHING) ---
+# --- 2. DATABASE FUNCTIONS ---
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
@@ -202,7 +202,7 @@ def setup_database_schema():
         if conn:
             conn.close()
 
-# เรียกใช้เฉพาะครั้งแรกที่ App เริ่มทำงาน
+# เรียกใช้งานฐานข้อมูลครั้งแรก
 setup_database_schema()
 
 # --- Helper Functions ---
