@@ -7,7 +7,7 @@ from google.genai import types
 from datetime import datetime, date, timedelta
 import plotly.graph_objects as go
 import plotly.express as px
-from gTTS import gTTS
+from gtts import gTTS
 import io
 import re
 import base64
