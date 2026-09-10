@@ -1,4 +1,5 @@
 streamlit
 google-genai
 plotly
-gtts
+gTTS
+psycopg2-binary
