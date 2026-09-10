@@ -139,6 +139,7 @@ def get_db_connection():
 def init_db():
     if not DATABASE_URL:
         return
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -160,8 +161,9 @@ def init_db():
                       streak_count INTEGER DEFAULT 1, 
                       last_login_date TEXT, 
                       freeze_used_month TEXT);''')
-        
-        # Auto-migration หากมีตารางเดิมอยู่แล้วแต่คอลัมน์ไม่ครบ
+        conn.commit()
+
+        # Auto-migration สำหรับคอลัมน์ใหม่เพิ่มเติม
         columns = [
             ("streak_count", "INTEGER DEFAULT 1"),
             ("last_login_date", "TEXT"),
@@ -169,7 +171,7 @@ def init_db():
         ]
         for col_name, col_type in columns:
             try:
-                cur.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type};")
+                cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_name} {col_type};")
                 conn.commit()
             except Exception:
                 conn.rollback()
@@ -183,6 +185,7 @@ def init_db():
                       lunch TEXT, 
                       dinner TEXT, 
                       water_ml INTEGER DEFAULT 0);''')
+        conn.commit()
 
         # 3. สร้างตาราง health_history
         cur.execute('''CREATE TABLE IF NOT EXISTS health_history 
@@ -192,12 +195,16 @@ def init_db():
                       weight REAL, 
                       blood_sugar REAL, 
                       blood_pressure TEXT);''')
-
         conn.commit()
+
         cur.close()
-        conn.close()
     except Exception as e:
+        if conn:
+            conn.rollback()
         st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ/สร้างตารางฐานข้อมูล: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 # เรียกใช้งานการสร้างตารางทันทีที่ Script ถูกโหลด
 init_db()
