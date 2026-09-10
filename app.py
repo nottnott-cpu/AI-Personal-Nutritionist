@@ -1,5 +1,6 @@
 import streamlit as st
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import time
 from google import genai
 from google.genai import types
@@ -11,16 +12,19 @@ import io
 import re
 import base64
 import calendar
+
 # --- 1. SETUP & CONFIG ---
-# กำหนดค่า Global Constants ไว้ด้านบนสุดก่อนเรียกใช้งาน
 MODEL_NAME = 'gemini-2.5-flash'
 FALLBACK_MODEL = 'gemini-1.5-flash'
 
 st.set_page_config(page_title="ไทยกินดี AI Plus", page_icon="🥗", layout="wide")
 
-# ⚠️ ใส่ API Key จาก Google AI Studio ของคุณที่นี่ (ผ่าน Streamlit Secrets)
-client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+# ดึงค่าจาก Streamlit Secrets
+DATABASE_URL = st.secrets.get("DATABASE_URL", "")
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
+# ตั้งค่า Gemini Client
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 # --- Custom CSS ---
 st.markdown("""
@@ -127,52 +131,52 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# --- 2. DATABASE FUNCTIONS ---
+# --- 2. DATABASE FUNCTIONS (PostgreSQL / Supabase) ---
 def get_db_connection():
-    conn = sqlite3.connect("health_app_v5.db")
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     return conn
 
 def init_db():
+    if not DATABASE_URL:
+        return
     conn = get_db_connection()
-    conn.execute('''CREATE TABLE IF NOT EXISTS users 
+    cur = conn.cursor()
+    
+    cur.execute('''CREATE TABLE IF NOT EXISTS users 
                  (email TEXT PRIMARY KEY, nickname TEXT, gender TEXT, birth_year INTEGER, 
                   weight REAL, height REAL, bmi REAL, goals TEXT, diseases TEXT, allergies TEXT,
                   blood_sugar REAL, blood_pressure TEXT, streak_count INTEGER DEFAULT 1, 
                   last_login_date TEXT, freeze_used_month TEXT)''')
     
-    # Auto Migration
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN streak_count INTEGER DEFAULT 1")
-    except sqlite3.OperationalError:
-        pass
+    # Auto Migration สำหรับเพิ่มคอลัมน์ใหม่หากตารางมีอยู่แล้ว
+    columns_to_add = [
+        ("streak_count", "INTEGER DEFAULT 1"),
+        ("last_login_date", "TEXT"),
+        ("freeze_used_month", "TEXT")
+    ]
+    for col_name, col_type in columns_to_add:
+        try:
+            cur.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN last_login_date TEXT")
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN freeze_used_month TEXT")
-    except sqlite3.OperationalError:
-        pass
-
-    conn.execute('''CREATE TABLE IF NOT EXISTS daily_logs 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, log_date TEXT, 
+    cur.execute('''CREATE TABLE IF NOT EXISTS daily_logs 
+                 (id SERIAL PRIMARY KEY, email TEXT, log_date TEXT, 
                   breakfast TEXT, lunch TEXT, dinner TEXT, water_ml INTEGER DEFAULT 0)''')
 
-    conn.execute('''CREATE TABLE IF NOT EXISTS health_history 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, record_date TEXT, 
+    cur.execute('''CREATE TABLE IF NOT EXISTS health_history 
+                 (id SERIAL PRIMARY KEY, email TEXT, record_date TEXT, 
                   weight REAL, blood_sugar REAL, blood_pressure TEXT)''')
 
     conn.commit()
+    cur.close()
     conn.close()
 
 init_db()
 
 # --- Helper Functions ---
 def generate_ai_response_with_retry(prompt, config=None, retries=3):
-    """ฟังก์ชันช่วยส่งคำขอไปหา AI พร้อมระบบ Retry และ Fallback Model เมื่อเจอ 503"""
     models_to_try = [MODEL_NAME, FALLBACK_MODEL]
     
     for model in models_to_try:
@@ -183,22 +187,16 @@ def generate_ai_response_with_retry(prompt, config=None, retries=3):
                     contents=prompt,
                     config=config
                 )
-                if hasattr(response, 'text') and response.text:
-                    return str(response.text)
-                elif isinstance(response, str):
-                    return response
-                else:
-                    return str(response)
+                return response.text
             except Exception as e:
                 err_msg = str(e)
                 if ("503" in err_msg or "UNAVAILABLE" in err_msg or "high demand" in err_msg) and attempt < retries - 1:
-                    time.sleep(2) # รอก่อนลองใหม่
+                    time.sleep(2)
                     continue
                 elif model == models_to_try[-1] and attempt == retries - 1:
                     return f"⚠️ ระบบ AI ขัดข้องชั่วคราวเนื่องจากปริมาณการใช้งานสูง (Server Busy) กรุณาลองใหม่อีกครั้งในอีกสักครู่ ({err_msg})"
                 else:
                     break
-    return "⚠️ ไม่สามารถดึงข้อมูลจาก AI ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง"
 
 def calculate_bmi(weight, height):
     if height and weight and height > 0 and weight > 0:
@@ -247,7 +245,9 @@ def update_streak(email):
     today = date.today()
     today_str = str(today)
     conn = get_db_connection()
-    user = conn.execute("SELECT streak_count, last_login_date, freeze_used_month FROM users WHERE email = ?", (email,)).fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT streak_count, last_login_date, freeze_used_month FROM users WHERE email = %s", (email,))
+    user = cur.fetchone()
     
     if user:
         last_date_str = user['last_login_date']
@@ -274,9 +274,10 @@ def update_streak(email):
             else:
                 streak = 1
                 
-            conn.execute("UPDATE users SET streak_count = ?, last_login_date = ?, freeze_used_month = ? WHERE email = ?", 
-                         (streak, today_str, freeze_month, email))
+            cur.execute("UPDATE users SET streak_count = %s, last_login_date = %s, freeze_used_month = %s WHERE email = %s", 
+                        (streak, today_str, freeze_month, email))
             conn.commit()
+    cur.close()
     conn.close()
 
 def get_streak_badges(streak):
@@ -387,9 +388,6 @@ def render_bp_bar(bp_str):
 
 def play_audio_from_text(text):
     try:
-        if not isinstance(text, str):
-            text = str(text) if text is not None else ""
-            
         clean_text = re.sub(r'<[^>]*>', '', text)
         clean_text = re.sub(r'[|:─\-\*#_`~]', ' ', clean_text)
         clean_text = ' '.join(clean_text.split())
@@ -455,9 +453,6 @@ def ask_ai_nutritionist(profile):
     return generate_ai_response_with_retry(prompt, config=config)
 
 def extract_meals_from_ai(ai_text):
-    if not isinstance(ai_text, str):
-        ai_text = str(ai_text) if ai_text is not None else ""
-        
     bf, lu, dn = "", "", ""
     lines = ai_text.split('\n')
     for line in lines:
@@ -473,9 +468,6 @@ def extract_meals_from_ai(ai_text):
     return bf, lu, dn
 
 def render_ai_result_expanders(ai_text):
-    if not isinstance(ai_text, str):
-        ai_text = str(ai_text) if ai_text is not None else ""
-
     sections = ai_text.split("[SECTION_BREAK]")
     sec1 = sections[0].replace("[SECTION_1]", "").strip() if len(sections) > 0 else "ไม่มีข้อมูล"
     sec2 = sections[1].replace("[SECTION_2]", "").strip() if len(sections) > 1 else "ไม่มีข้อมูล"
@@ -573,15 +565,39 @@ def profile_form(existing_data=None):
             else:
                 bmi_calc, _, _, _ = calculate_bmi(weight, height)
                 conn = get_db_connection()
-                conn.execute('''INSERT OR REPLACE INTO users 
-                             (email, nickname, gender, birth_year, weight, height, bmi, goals, diseases, allergies, blood_sugar, blood_pressure, streak_count, last_login_date, freeze_used_month) 
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT streak_count FROM users WHERE email=?), 1), ?, COALESCE((SELECT freeze_used_month FROM users WHERE email=?), ''))''', 
-                             (st.session_state.user_email, nickname.strip(), gender, int(birth_year) - 543, weight, height, bmi_calc, ", ".join(goals), diseases, allergies, float(blood_sugar) if blood_sugar else None, blood_pressure, st.session_state.user_email, str(date.today()), st.session_state.user_email))
+                cur = conn.cursor()
                 
-                conn.execute('''INSERT INTO health_history (email, record_date, weight, blood_sugar, blood_pressure) 
-                             VALUES (?, ?, ?, ?, ?)''', (st.session_state.user_email, str(date.today()), weight, float(blood_sugar) if blood_sugar else None, blood_pressure))
+                sql_upsert_user = """
+                INSERT INTO users 
+                (email, nickname, gender, birth_year, weight, height, bmi, goals, diseases, allergies, blood_sugar, blood_pressure, last_login_date) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (email) DO UPDATE SET
+                    nickname = EXCLUDED.nickname,
+                    gender = EXCLUDED.gender,
+                    birth_year = EXCLUDED.birth_year,
+                    weight = EXCLUDED.weight,
+                    height = EXCLUDED.height,
+                    bmi = EXCLUDED.bmi,
+                    goals = EXCLUDED.goals,
+                    diseases = EXCLUDED.diseases,
+                    allergies = EXCLUDED.allergies,
+                    blood_sugar = EXCLUDED.blood_sugar,
+                    blood_pressure = EXCLUDED.blood_pressure,
+                    last_login_date = EXCLUDED.last_login_date;
+                """
+                
+                cur.execute(sql_upsert_user, (
+                    st.session_state.user_email, nickname.strip(), gender, int(birth_year) - 543, 
+                    weight, height, bmi_calc, ", ".join(goals), diseases, allergies, 
+                    float(blood_sugar) if blood_sugar else None, blood_pressure, str(date.today())
+                ))
+                
+                cur.execute('''INSERT INTO health_history (email, record_date, weight, blood_sugar, blood_pressure) 
+                             VALUES (%s, %s, %s, %s, %s)''', 
+                             (st.session_state.user_email, str(date.today()), weight, float(blood_sugar) if blood_sugar else None, blood_pressure))
                 
                 conn.commit()
+                cur.close()
                 conn.close()
                 st.success("บันทึกข้อมูลสำเร็จ")
                 if is_edit:
@@ -597,12 +613,18 @@ else:
 
     if 'edit_my_profile' in st.session_state:
         conn = get_db_connection()
-        user_data = conn.execute("SELECT * FROM users WHERE email = ?", (st.session_state.user_email,)).fetchone()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE email = %s", (st.session_state.user_email,))
+        user_data = cur.fetchone()
+        cur.close()
         conn.close()
         profile_form(user_data)
     else:
         conn = get_db_connection()
-        user = conn.execute("SELECT * FROM users WHERE email = ?", (st.session_state.user_email,)).fetchone()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE email = %s", (st.session_state.user_email,))
+        user = cur.fetchone()
+        cur.close()
         conn.close()
 
         if not user:
@@ -747,13 +769,17 @@ else:
                             bf, lu, dn = extract_meals_from_ai(st.session_state.last_ai_result)
                             today_str = str(date.today())
                             conn = get_db_connection()
-                            existing = conn.execute("SELECT id, water_ml FROM daily_logs WHERE email=? AND log_date=?", (st.session_state.user_email, today_str)).fetchone()
+                            cur = conn.cursor()
+                            cur.execute("SELECT id, water_ml FROM daily_logs WHERE email=%s AND log_date=%s", (st.session_state.user_email, today_str))
+                            existing = cur.fetchone()
+                            
                             if existing:
-                                conn.execute("UPDATE daily_logs SET breakfast=?, lunch=?, dinner=? WHERE id=?", (bf, lu, dn, existing['id']))
+                                cur.execute("UPDATE daily_logs SET breakfast=%s, lunch=%s, dinner=%s WHERE id=%s", (bf, lu, dn, existing['id']))
                             else:
-                                conn.execute("INSERT INTO daily_logs (email, log_date, breakfast, lunch, dinner, water_ml) VALUES (?, ?, ?, ?, ?, 0)", 
+                                cur.execute("INSERT INTO daily_logs (email, log_date, breakfast, lunch, dinner, water_ml) VALUES (%s, %s, %s, %s, %s, 0)", 
                                              (st.session_state.user_email, today_str, bf, lu, dn))
                             conn.commit()
+                            cur.close()
                             conn.close()
                             st.success("บันทึกรายการอาหารลงในหน้าบันทึกประจำวันเรียบร้อยแล้ว!")
 
@@ -762,7 +788,9 @@ else:
                 today_str = str(date.today())
                 
                 conn = get_db_connection()
-                log = conn.execute("SELECT * FROM daily_logs WHERE email = ? AND log_date = ?", (st.session_state.user_email, today_str)).fetchone()
+                cur = conn.cursor()
+                cur.execute("SELECT * FROM daily_logs WHERE email = %s AND log_date = %s", (st.session_state.user_email, today_str))
+                log = cur.fetchone()
                 
                 water_val = log['water_ml'] if log else 0
                 bf_val = log['breakfast'] if log else ""
@@ -783,20 +811,22 @@ else:
                     if st.button("เติมน้ำ 1 แก้ว (+250 ml)", type="primary", use_container_width=True):
                         new_water = water_val + 250
                         if log:
-                            conn.execute("UPDATE daily_logs SET water_ml = ? WHERE id = ?", (new_water, log['id']))
+                            cur.execute("UPDATE daily_logs SET water_ml = %s WHERE id = %s", (new_water, log['id']))
                         else:
-                            conn.execute("INSERT INTO daily_logs (email, log_date, water_ml) VALUES (?, ?, ?)", (st.session_state.user_email, today_str, new_water))
+                            cur.execute("INSERT INTO daily_logs (email, log_date, water_ml) VALUES (%s, %s, %s)", (st.session_state.user_email, today_str, new_water))
                         conn.commit()
+                        cur.close()
                         conn.close()
                         st.rerun()
                 with col_w2:
                     if st.button("ลดน้ำ 1 แก้ว (-250 ml)", type="secondary", use_container_width=True):
                         new_water = max(0, water_val - 250)
                         if log:
-                            conn.execute("UPDATE daily_logs SET water_ml = ? WHERE id = ?", (new_water, log['id']))
+                            cur.execute("UPDATE daily_logs SET water_ml = %s WHERE id = %s", (new_water, log['id']))
                         else:
-                            conn.execute("INSERT INTO daily_logs (email, log_date, water_ml) VALUES (?, ?, ?)", (st.session_state.user_email, today_str, new_water))
+                            cur.execute("INSERT INTO daily_logs (email, log_date, water_ml) VALUES (%s, %s, %s)", (st.session_state.user_email, today_str, new_water))
                         conn.commit()
+                        cur.close()
                         conn.close()
                         st.rerun()
 
@@ -808,17 +838,19 @@ else:
                 dn = st.text_input("มื้อเย็น", value=dn_val, placeholder="เช่น ส้มตำไทย, ไก่ย่าง")
                 
                 if st.button("บันทึกมื้ออาหาร", type="primary", use_container_width=True):
-                    conn = get_db_connection()
                     if log:
-                        conn.execute("UPDATE daily_logs SET breakfast=?, lunch=?, dinner=? WHERE id=?", (bf, lu, dn, log['id']))
+                        cur.execute("UPDATE daily_logs SET breakfast=%s, lunch=%s, dinner=%s WHERE id=%s", (bf, lu, dn, log['id']))
                     else:
-                        conn.execute("INSERT INTO daily_logs (email, log_date, breakfast, lunch, dinner, water_ml) VALUES (?, ?, ?, ?, ?, ?)", 
+                        cur.execute("INSERT INTO daily_logs (email, log_date, breakfast, lunch, dinner, water_ml) VALUES (%s, %s, %s, %s, %s, %s)", 
                                      (st.session_state.user_email, today_str, bf, lu, dn, water_val))
                     conn.commit()
+                    cur.close()
                     conn.close()
                     st.success("บันทึกข้อมูลสำเร็จ!")
                     st.rerun()
-                conn.close()
+                else:
+                    cur.close()
+                    conn.close()
 
                 st.markdown("<br>**ปฏิทินประวัติการรับประทานอาหารรายเดือน**", unsafe_allow_html=True)
                 
@@ -834,8 +866,11 @@ else:
                 month_calendar = calendar.monthcalendar(selected_year, selected_m_idx)
                 
                 conn = get_db_connection()
+                cur = conn.cursor()
                 month_prefix = f"{selected_year}-{selected_m_idx:02d}-%"
-                logs_in_month = conn.execute("SELECT * FROM daily_logs WHERE email = ? AND log_date LIKE ?", (st.session_state.user_email, month_prefix)).fetchall()
+                cur.execute("SELECT * FROM daily_logs WHERE email = %s AND log_date LIKE %s", (st.session_state.user_email, month_prefix))
+                logs_in_month = cur.fetchall()
+                cur.close()
                 conn.close()
                 
                 logs_dict = {l['log_date']: l for l in logs_in_month}
@@ -861,7 +896,10 @@ else:
                 if "selected_cal_date" in st.session_state and st.session_state.selected_cal_date:
                     sel_d = st.session_state.selected_cal_date
                     conn = get_db_connection()
-                    d_log = conn.execute("SELECT * FROM daily_logs WHERE email = ? AND log_date = ?", (st.session_state.user_email, sel_d)).fetchone()
+                    cur = conn.cursor()
+                    cur.execute("SELECT * FROM daily_logs WHERE email = %s AND log_date = %s", (st.session_state.user_email, sel_d))
+                    d_log = cur.fetchone()
+                    cur.close()
                     conn.close()
                     
                     with st.expander(f"📋 รายละเอียดเมนูอาหารประจำวันที่ {sel_d}", expanded=True):
@@ -890,27 +928,32 @@ else:
                     
                     if st.button("บันทึกสถิติ", type="primary", use_container_width=True):
                         conn = get_db_connection()
-                        conn.execute("INSERT INTO health_history (email, record_date, weight, blood_sugar) VALUES (?, ?, ?, ?)",
+                        cur = conn.cursor()
+                        cur.execute("INSERT INTO health_history (email, record_date, weight, blood_sugar) VALUES (%s, %s, %s, %s)",
                                      (st.session_state.user_email, str(date.today()), rec_w, rec_bs if rec_bs > 0 else None))
-                        conn.execute("UPDATE users SET weight=?, blood_sugar=? WHERE email=?",
+                        cur.execute("UPDATE users SET weight=%s, blood_sugar=%s WHERE email=%s",
                                      (rec_w, rec_bs if rec_bs > 0 else None, st.session_state.user_email))
                         conn.commit()
+                        cur.close()
                         conn.close()
                         st.success("บันทึกสถิติสำเร็จ!")
                         st.rerun()
 
                 conn = get_db_connection()
-                hist_df = conn.execute("""
+                cur = conn.cursor()
+                cur.execute("""
                     SELECT record_date, weight 
                     FROM health_history 
                     WHERE id IN (
                         SELECT MAX(id) 
                         FROM health_history 
-                        WHERE email = ? AND weight IS NOT NULL AND weight > 0 
+                        WHERE email = %s AND weight IS NOT NULL AND weight > 0 
                         GROUP BY record_date
                     ) 
                     ORDER BY record_date ASC
-                """, (st.session_state.user_email,)).fetchall()
+                """, (st.session_state.user_email,))
+                hist_df = cur.fetchall()
+                cur.close()
                 conn.close()
 
                 if hist_df and len(hist_df) > 0:
