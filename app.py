@@ -133,11 +133,7 @@ st.markdown("""
 
 # --- 2. DATABASE FUNCTIONS ---
 def get_db_connection():
-    """สร้างและคืนค่าการเชื่อมต่อฐานข้อมูลแบบปลอดภัย"""
-    if not DATABASE_URL:
-        st.error("ไม่พบคอนฟิก DATABASE_URL ใน Secrets กรุณาตั้งค่าก่อนใช้งาน")
-        st.stop()
-    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor, sslmode='require')
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
 @st.cache_resource
 def setup_database_schema():
