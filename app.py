@@ -17,7 +17,7 @@ import calendar
 MODEL_NAME = 'gemini-2.5-flash'
 FALLBACK_MODEL = 'gemini-1.5-flash'
 
-st.set_page_config(page_title="ไทยกินดี AI Plus", page_icon="🥗", layout="wide")
+st.set_page_config(page_title="AI Thai Nutritionist Pro", page_icon="🥗", layout="wide")
 
 # ดึงค่าจาก Streamlit Secrets
 DATABASE_URL = st.secrets.get("DATABASE_URL", "")
