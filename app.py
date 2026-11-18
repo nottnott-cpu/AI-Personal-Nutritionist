@@ -526,7 +526,7 @@ def login_page():
     with col2:
         st.markdown("""
         <div style="text-align: center; padding: 40px 20px 20px 20px;">
-            <h2 style="color: #00A86B; font-weight: 700; margin-bottom: 5px;">ไทยกินดี AI Plus</h2>
+            <h2 style="color: #00A86B; font-weight: 700; margin-bottom: 5px;">AI Thai Nutritionist Pro</h2>
             <p style="color: #718096; font-size: 0.95rem; margin-bottom: 25px;">แอปคู่หูโภชนาการและสุขภาพส่วนบุคคล</p>
         </div>
         """, unsafe_allow_html=True)
