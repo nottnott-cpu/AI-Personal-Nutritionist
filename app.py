@@ -671,7 +671,7 @@ else:
             # --- TOP HEADER BAR ---
             st.markdown("""
             <div class="top-navbar">
-                <h2>ไทยกินดี AI Plus</h2>
+                <h2>AI Thai Nutritionist Pro</h2>
             </div>
             """, unsafe_allow_html=True)
 
